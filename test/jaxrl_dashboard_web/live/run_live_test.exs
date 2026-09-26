@@ -80,6 +80,52 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       assert view |> element("#runs-#{run.id}") |> render() =~ "—"
     end
 
+    test "selecting runs offers a comparison, in selection order", %{conn: conn, user: user} do
+      scope = Scope.for_user(user)
+      {:ok, a} = Runs.enqueue_run(scope, %{"config_source" => "return.json", "name" => "run-a"})
+      {:ok, b} = Runs.enqueue_run(scope, %{"config_source" => "return.json", "name" => "run-b"})
+      {:ok, view, _html} = live(conn, ~p"/")
+      refute has_element?(view, "#compare-bar")
+
+      view |> element("#runs-#{b.id} input[type=checkbox]") |> render_click()
+      view |> element("#runs-#{a.id} input[type=checkbox]") |> render_click()
+
+      assert has_element?(view, "#compare-bar", "2 selected")
+      assert has_element?(view, "#runs-#{a.id} input[checked]")
+      assert has_element?(view, ~s(#compare-bar a[href="/compare?runs=run-b%2Crun-a"]))
+
+      # Ticking a box selects, it doesn't open the run.
+      assert render(view) =~ "Training runs"
+
+      view |> element("#runs-#{b.id} input[type=checkbox]") |> render_click()
+      assert has_element?(view, ~s(#compare-bar a[href="/compare?runs=run-a"]))
+
+      view |> element("#compare-bar button", "Clear") |> render_click()
+      refute has_element?(view, "#compare-bar")
+      refute has_element?(view, "#runs-#{a.id} input[checked]")
+    end
+
+    test "limits comparisons to 8 runs", %{conn: conn, user: user} do
+      scope = Scope.for_user(user)
+
+      runs =
+        for i <- 1..9 do
+          {:ok, run} =
+            Runs.enqueue_run(scope, %{"config_source" => "return.json", "name" => "r#{i}"})
+
+          run
+        end
+
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      for run <- runs,
+          do: view |> element("#runs-#{run.id} input[type=checkbox]") |> render_click()
+
+      assert has_element?(view, "#compare-bar", "8 selected")
+      assert render(view) =~ "You can compare up to 8 runs at a time."
+      refute has_element?(view, "#runs-#{List.last(runs).id} input[checked]")
+    end
+
     test "cancels a queued run", %{conn: conn, user: user} do
       {:ok, run} = Runs.enqueue_run(Scope.for_user(user), %{"config_source" => "return.json"})
       {:ok, view, _html} = live(conn, ~p"/")
@@ -160,16 +206,22 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       view |> element("#metrics") |> render_hook("load_metrics", %{})
 
       assert_reply(view, %{
-        steps: [0, 1],
-        series: %{"loss" => [1.0, nil]},
-        nan: %{"loss" => %{first: 1, last: 1, count: 1}}
+        runs: [
+          %{
+            name: "detail",
+            slot: 0,
+            steps: [0, 1],
+            series: %{"loss" => [1.0, nil]},
+            nan: %{"loss" => %{first: 1, last: 1, count: 1}}
+          }
+        ]
       })
 
       # Already-sent steps are dropped; new ones are pushed.
       rows = [%{step: 1, values: %{}, nan: []}, %{step: 2, values: %{"loss" => 0.5}, nan: []}]
       Runs.broadcast_run(run.name, {:metrics, run.name, rows})
 
-      assert_push_event(view, "metrics_append", %{rows: [%{step: 2}]})
+      assert_push_event(view, "metrics_append", %{run: "detail", rows: [%{step: 2}]})
     end
 
     test "appends streamed output lines and skips ones it already has", %{conn: conn, run: run} do

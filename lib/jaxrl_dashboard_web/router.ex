@@ -35,6 +35,8 @@ defmodule JaxrlDashboardWeb.Router do
       on_mount: [{JaxrlDashboardWeb.UserAuth, :require_authenticated}] do
       live "/", RunLive.Index, :index
       live "/runs/:name", RunLive.Show, :show
+      live "/compare", CompareLive, :index
+      live "/configs/new", ConfigLive.New, :new
     end
 
     get "/runs/:name/files/:file", RunFileController, :show

@@ -18,6 +18,20 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
         <span class="font-mono">{@run.name}</span>
         <:subtitle><.status_badge run={@run} /></:subtitle>
         <:actions>
+          <.link
+            navigate={~p"/configs/new?#{[from: "run:" <> @run.name]}"}
+            id="edit-config"
+            class="btn btn-ghost btn-sm"
+          >
+            <.icon name="hero-pencil-square" class="size-4" /> Edit as new config
+          </.link>
+          <.link
+            navigate={~p"/compare?#{[runs: @run.name]}"}
+            id="compare-run"
+            class="btn btn-ghost btn-sm"
+          >
+            <.icon name="hero-chart-bar-square" class="size-4" /> Compare
+          </.link>
           <.button
             :if={@run.status in [:queued, :running] and is_nil(@run.cancel_requested_at)}
             id="cancel-run"
@@ -62,7 +76,7 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
           </.link>
         </div>
         <%!-- Rendered client-side by assets/js/hooks/metrics_charts.js --%>
-        <div id="metrics" phx-hook="MetricsCharts" phx-update="ignore"></div>
+        <div id="metrics" phx-hook="MetricsCharts" phx-update="ignore" data-mode="single"></div>
       </section>
 
       <section>
@@ -164,8 +178,10 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
   # The chart hook asks for the full history once it's mounted; after that it
   # gets appended rows pushed as "metrics_append".
   def handle_event("load_metrics", _params, socket) do
-    metrics = Metrics.load(socket.assigns.run.name)
-    {:reply, metrics, assign(socket, metrics_last_step: List.last(metrics.steps, -1))}
+    name = socket.assigns.run.name
+    metrics = name |> Metrics.load() |> Map.merge(%{name: name, slot: 0})
+
+    {:reply, %{runs: [metrics]}, assign(socket, metrics_last_step: List.last(metrics.steps, -1))}
   end
 
   @impl true
@@ -183,7 +199,7 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     {:noreply, socket}
   end
 
-  def handle_info({:metrics, _name, rows}, socket) do
+  def handle_info({:metrics, name, rows}, socket) do
     last_step = socket.assigns.metrics_last_step
 
     case Enum.filter(rows, &(&1.step > last_step)) do
@@ -193,7 +209,7 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
       new_rows ->
         {:noreply,
          socket
-         |> push_event("metrics_append", %{rows: new_rows})
+         |> push_event("metrics_append", %{run: name, rows: new_rows})
          |> assign(metrics_last_step: List.last(new_rows).step)}
     end
   end

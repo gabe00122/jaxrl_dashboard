@@ -23,6 +23,10 @@ config :jaxrl_dashboard, JaxrlDashboardWeb.Endpoint,
   secret_key_base: "oVN3fiR3ihq7GKoDGGr8gphY2QL/iGJ3qam/+2qwJ+Sy+ZLeN20QZ6q4Y+zD0jIS",
   server: false
 
+# Validation against the real Python models is tested in
+# python_validator_test.exs; everything else uses a fake.
+config :jaxrl_dashboard, :config_validator, JaxrlDashboard.FakeConfigValidator
+
 # Tests start the scheduler themselves, against a fake training script.
 config :jaxrl_dashboard, :runs,
   train_command: ["bash", Path.expand("../test/support/fake_train.sh", __DIR__)],

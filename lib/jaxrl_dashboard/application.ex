@@ -17,6 +17,7 @@ defmodule JaxrlDashboard.Application do
         {Registry, keys: :unique, name: JaxrlDashboard.Runs.WatcherRegistry},
         {DynamicSupervisor, name: JaxrlDashboard.Runs.WatcherSupervisor, strategy: :one_for_one}
       ] ++
+        config_validator() ++
         scheduler() ++
         [
           # Start to serve requests, typically the last entry
@@ -27,6 +28,13 @@ defmodule JaxrlDashboard.Application do
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: JaxrlDashboard.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp config_validator do
+    case Application.fetch_env!(:jaxrl_dashboard, :config_validator) do
+      JaxrlDashboard.Configs.PythonValidator = validator -> [validator]
+      _fake -> []
+    end
   end
 
   defp scheduler do

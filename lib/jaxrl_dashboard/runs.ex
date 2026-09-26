@@ -9,7 +9,7 @@ defmodule JaxrlDashboard.Runs do
 
   import Ecto.Query, warn: false
 
-  alias JaxrlDashboard.Repo
+  alias JaxrlDashboard.{Configs, Repo}
   alias JaxrlDashboard.Accounts.Scope
   alias JaxrlDashboard.Runs.{Run, Scheduler, Settings}
 
@@ -23,6 +23,9 @@ defmodule JaxrlDashboard.Runs do
   """
   def run_topic(name), do: "run:" <> name
   def subscribe_run(name), do: Phoenix.PubSub.subscribe(JaxrlDashboard.PubSub, run_topic(name))
+
+  def unsubscribe_run(name),
+    do: Phoenix.PubSub.unsubscribe(JaxrlDashboard.PubSub, run_topic(name))
 
   def broadcast_run(name, message),
     do: Phoenix.PubSub.broadcast(JaxrlDashboard.PubSub, run_topic(name), message)
@@ -44,6 +47,18 @@ defmodule JaxrlDashboard.Runs do
         limit: ^limit,
         preload: :user
     )
+  end
+
+  @doc "Runs with the given names, in the given order. Unknown names are skipped."
+  def get_runs_by_names(names) do
+    by_name =
+      Repo.all(from r in Run, where: r.name in ^names, preload: :user) |> Map.new(&{&1.name, &1})
+
+    for name <- names, run = by_name[name], do: run
+  end
+
+  def list_run_names do
+    Repo.all(from r in Run, order_by: [desc: r.inserted_at, desc: r.id], select: r.name)
   end
 
   def get_run!(id), do: Run |> Repo.get!(id) |> Repo.preload(:user)
@@ -72,9 +87,47 @@ defmodule JaxrlDashboard.Runs do
     %Run{status: :queued, user_id: user.id}
     |> Run.enqueue_changeset(attrs)
     |> load_config()
+    |> validate_config(:config_source)
     |> Repo.insert()
     |> broadcast(:run_created)
     |> tap(fn result -> match?({:ok, _}, result) && Scheduler.poke() end)
+  end
+
+  @doc """
+  Queues a run from a config map, e.g. one made in the config builder.
+  The config must pass jaxrl's validation.
+  """
+  def enqueue_config_run(%Scope{user: user}, attrs) do
+    %Run{status: :queued, user_id: user.id}
+    |> Run.config_changeset(attrs)
+    |> validate_config(:config)
+    |> Repo.insert()
+    |> broadcast(:run_created)
+    |> tap(fn result -> match?({:ok, _}, result) && Scheduler.poke() end)
+  end
+
+  # Checks the config against jaxrl's Pydantic models, so a run never starts
+  # with a config pmarl would reject.
+  defp validate_config(%Ecto.Changeset{valid?: false} = changeset, _field), do: changeset
+
+  defp validate_config(changeset, field) do
+    case Configs.validate(Ecto.Changeset.get_field(changeset, :config)) do
+      {:ok, []} ->
+        changeset
+
+      {:ok, [first | _] = errors} ->
+        where = Enum.join(first.path, ".")
+        more = if length(errors) > 1, do: " (and #{length(errors) - 1} more)", else: ""
+
+        Ecto.Changeset.add_error(
+          changeset,
+          field,
+          "is invalid: #{where}: #{first.message}#{more}"
+        )
+
+      {:error, reason} ->
+        Ecto.Changeset.add_error(changeset, field, "couldn't be validated: #{reason}")
+    end
   end
 
   defp load_config(%Ecto.Changeset{valid?: false} = changeset), do: changeset

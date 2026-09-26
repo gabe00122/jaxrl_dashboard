@@ -49,11 +49,25 @@ defmodule JaxrlDashboard.Runs.Run do
     |> validate_name()
   end
 
-  defp maybe_generate_name(changeset, true) do
-    source = get_field(changeset, :config_source)
+  @doc """
+  Changeset for queueing a run from a config map (the config builder).
+  `config_source` is a free-form label for where the config came from.
+  """
+  def config_changeset(run, attrs) do
+    run
+    |> cast(attrs, [:name, :config, :config_source])
+    |> validate_required([:config])
+    |> maybe_generate_name(true)
+    |> validate_name()
+  end
 
-    if is_nil(get_field(changeset, :name)) and source do
-      put_change(changeset, :name, generate_name(source))
+  defp maybe_generate_name(changeset, true) do
+    if is_nil(get_field(changeset, :name)) do
+      put_change(
+        changeset,
+        :name,
+        generate_name(get_field(changeset, :config_source) || "custom")
+      )
     else
       changeset
     end

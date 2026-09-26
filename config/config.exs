@@ -17,6 +17,8 @@ config :jaxrl_dashboard,
 # than `uv run`) avoids uv re-syncing the environment and dropping the CUDA extra.
 jaxrl_dir = Path.expand("../../jaxrl", __DIR__)
 
+config :jaxrl_dashboard, :config_validator, JaxrlDashboard.Configs.PythonValidator
+
 config :jaxrl_dashboard, :runs,
   project_dir: jaxrl_dir,
   config_dir: Path.join(jaxrl_dir, "config"),
@@ -24,6 +26,8 @@ config :jaxrl_dashboard, :runs,
   # Dashboard-owned per-run files: input config, output log, pid, exit code.
   data_dir: Path.expand("../var/runs", __DIR__),
   train_command: [".venv/bin/pmarl", "train"],
+  # jaxrl's Python, used to validate configs against its Pydantic models.
+  python: ".venv/bin/python",
   # One GPU, so one training run at a time.
   max_concurrent: 1,
   poll_interval: 1_000,

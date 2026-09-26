@@ -74,6 +74,51 @@ defmodule JaxrlDashboard.RunsTest do
     end
   end
 
+  describe "validation against jaxrl's config models" do
+    test "enqueue_run refuses config files that don't validate", %{scope: scope} do
+      write_config("stale.json", %{"vf_clip" => 1})
+
+      JaxrlDashboard.FakeConfigValidator.put_errors(fn
+        %{"vf_clip" => _} ->
+          [%{path: ~w(learner trainer vf_clip), message: "Extra inputs are not permitted"}]
+
+        _ ->
+          []
+      end)
+
+      assert {:error, changeset} = Runs.enqueue_run(scope, %{"config_source" => "stale.json"})
+
+      assert [message] = errors_on(changeset).config_source
+      assert message == "is invalid: learner.trainer.vf_clip: Extra inputs are not permitted"
+    end
+
+    test "enqueue_config_run queues a built config", %{scope: scope} do
+      assert {:ok, run} =
+               Runs.enqueue_config_run(scope, %{
+                 "config" => %{"seed" => 5},
+                 "config_source" => "best.json (edited)"
+               })
+
+      assert run.config == %{"seed" => 5}
+      assert run.name =~ ~r/^best-[a-z2-7]{4}$/
+      assert run.status == :queued
+    end
+
+    test "enqueue_config_run names configs without a source 'custom'", %{scope: scope} do
+      assert {:ok, %Run{name: "custom-" <> _}} =
+               Runs.enqueue_config_run(scope, %{"config" => %{}})
+    end
+
+    test "enqueue_config_run refuses invalid configs", %{scope: scope} do
+      JaxrlDashboard.FakeConfigValidator.put_errors(fn _ ->
+        [%{path: ["seed"], message: "bad"}, %{path: ["max_env_steps"], message: "Field required"}]
+      end)
+
+      assert {:error, changeset} = Runs.enqueue_config_run(scope, %{"config" => %{"seed" => "?"}})
+      assert errors_on(changeset).config == ["is invalid: seed: bad (and 1 more)"]
+    end
+  end
+
   describe "cancel_run/1" do
     test "cancels a queued run immediately", %{scope: scope} do
       write_config("a.json")

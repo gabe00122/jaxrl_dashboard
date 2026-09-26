@@ -1,0 +1,3104 @@
+{
+  "config": {
+    "$defs": {
+      "AttentionConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "head_dim": {
+            "title": "Head Dim",
+            "type": "integer"
+          },
+          "num_heads": {
+            "title": "Num Heads",
+            "type": "integer"
+          },
+          "num_kv_heads": {
+            "title": "Num Kv Heads",
+            "type": "integer"
+          },
+          "rope_max_wavelength": {
+            "default": 10000,
+            "title": "Rope Max Wavelength",
+            "type": "number"
+          },
+          "sliding_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sliding Window"
+          },
+          "type": {
+            "const": "attention",
+            "default": "attention",
+            "title": "Type",
+            "type": "string"
+          },
+          "use_qk_norm": {
+            "default": false,
+            "title": "Use Qk Norm",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "num_heads",
+          "num_kv_heads",
+          "head_dim"
+        ],
+        "title": "AttentionConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "num_heads",
+          "num_kv_heads",
+          "head_dim",
+          "sliding_window",
+          "rope_max_wavelength",
+          "use_qk_norm"
+        ]
+      },
+      "EnvironmentConfig": {
+        "additionalProperties": true,
+        "description": "Top-level environment config. The env type is resolved through the\nEnvironmentFactory registry at make time, where the config is validated\nagainst the model the env registered with (if any).",
+        "properties": {
+          "env_type": {
+            "title": "Env Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "env_type"
+        ],
+        "title": "EnvironmentConfig",
+        "type": "object",
+        "x-order": [
+          "env_type"
+        ]
+      },
+      "FeedForwardConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "glu": {
+            "default": true,
+            "title": "Glu",
+            "type": "boolean"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "size"
+        ],
+        "title": "FeedForwardConfig",
+        "type": "object",
+        "x-order": [
+          "size",
+          "glu"
+        ]
+      },
+      "FlattenedObsEncoderConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "obs_type": {
+            "const": "grid_flattened",
+            "default": "grid_flattened",
+            "title": "Obs Type",
+            "type": "string"
+          }
+        },
+        "title": "FlattenedObsEncoderConfig",
+        "type": "object",
+        "x-order": [
+          "obs_type"
+        ]
+      },
+      "GridCnnObsEncoderConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "embedding_dim": {
+            "default": 16,
+            "title": "Embedding Dim",
+            "type": "integer"
+          },
+          "kernels": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Kernels",
+            "type": "array"
+          },
+          "learned_embeddings": {
+            "default": false,
+            "title": "Learned Embeddings",
+            "type": "boolean"
+          },
+          "obs_type": {
+            "const": "grid_cnn",
+            "default": "grid_cnn",
+            "title": "Obs Type",
+            "type": "string"
+          },
+          "strides": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Strides",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kernels",
+          "strides",
+          "channels"
+        ],
+        "title": "GridCnnObsEncoderConfig",
+        "type": "object",
+        "x-order": [
+          "obs_type",
+          "kernels",
+          "strides",
+          "channels",
+          "embedding_dim",
+          "learned_embeddings"
+        ]
+      },
+      "HlGaussConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "n_logits": {
+            "title": "N Logits",
+            "type": "integer"
+          },
+          "sigma": {
+            "title": "Sigma",
+            "type": "number"
+          },
+          "type": {
+            "const": "hl_gauss",
+            "default": "hl_gauss",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min",
+          "max",
+          "n_logits",
+          "sigma"
+        ],
+        "title": "HlGaussConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "min",
+          "max",
+          "n_logits",
+          "sigma"
+        ]
+      },
+      "LayerConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "feed_forward": {
+            "$ref": "#/$defs/FeedForwardConfig"
+          },
+          "history": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "attention": "#/$defs/AttentionConfig",
+                    "rnn": "#/$defs/RnnConfig"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/AttentionConfig"
+                  },
+                  {
+                    "$ref": "#/$defs/RnnConfig"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "History"
+          },
+          "use_post_attn_norm": {
+            "default": false,
+            "title": "Use Post Attn Norm",
+            "type": "boolean"
+          },
+          "use_post_ffw_norm": {
+            "default": false,
+            "title": "Use Post Ffw Norm",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "feed_forward"
+        ],
+        "title": "LayerConfig",
+        "type": "object",
+        "x-order": [
+          "feed_forward",
+          "history",
+          "use_post_attn_norm",
+          "use_post_ffw_norm"
+        ]
+      },
+      "LearnerConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/$defs/TransformerActorCriticConfig"
+          },
+          "optimizer": {
+            "$ref": "#/$defs/OptimizerConfig"
+          },
+          "trainer": {
+            "$ref": "#/$defs/PPOConfig"
+          }
+        },
+        "required": [
+          "optimizer",
+          "model",
+          "trainer"
+        ],
+        "title": "LearnerConfig",
+        "type": "object",
+        "x-order": [
+          "optimizer",
+          "model",
+          "trainer"
+        ]
+      },
+      "LinearObsEncoderConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "obs_type": {
+            "const": "linear",
+            "default": "linear",
+            "title": "Obs Type",
+            "type": "string"
+          }
+        },
+        "title": "LinearObsEncoderConfig",
+        "type": "object",
+        "x-order": [
+          "obs_type"
+        ]
+      },
+      "LoggerConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "use_console": {
+            "default": true,
+            "title": "Use Console",
+            "type": "boolean"
+          },
+          "use_jsonl": {
+            "default": true,
+            "title": "Use Jsonl",
+            "type": "boolean"
+          },
+          "use_neptune": {
+            "default": false,
+            "title": "Use Neptune",
+            "type": "boolean"
+          },
+          "use_tb": {
+            "default": false,
+            "title": "Use Tb",
+            "type": "boolean"
+          },
+          "use_wandb": {
+            "default": false,
+            "title": "Use Wandb",
+            "type": "boolean"
+          }
+        },
+        "title": "LoggerConfig",
+        "type": "object",
+        "x-order": [
+          "use_console",
+          "use_tb",
+          "use_neptune",
+          "use_wandb",
+          "use_jsonl"
+        ]
+      },
+      "MseCriticConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "mse",
+            "default": "mse",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "MseCriticConfig",
+        "type": "object",
+        "x-order": [
+          "type"
+        ]
+      },
+      "OptimizerConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "beta1": {
+            "title": "Beta1",
+            "type": "number"
+          },
+          "beta2": {
+            "title": "Beta2",
+            "type": "number"
+          },
+          "eps": {
+            "title": "Eps",
+            "type": "number"
+          },
+          "learning_rate": {
+            "title": "Learning Rate",
+            "type": "number"
+          },
+          "max_norm": {
+            "title": "Max Norm",
+            "type": "number"
+          },
+          "type": {
+            "enum": [
+              "adamw",
+              "muon"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "weight_decay": {
+            "title": "Weight Decay",
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "learning_rate",
+          "weight_decay",
+          "eps",
+          "beta1",
+          "beta2",
+          "max_norm"
+        ],
+        "title": "OptimizerConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "learning_rate",
+          "weight_decay",
+          "eps",
+          "beta1",
+          "beta2",
+          "max_norm"
+        ]
+      },
+      "PPOConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "discount": {
+            "default": 0.95,
+            "title": "Discount",
+            "type": "number"
+          },
+          "entropy_coef": {
+            "default": 0.005,
+            "title": "Entropy Coef",
+            "type": "number"
+          },
+          "epoch_count": {
+            "default": 1,
+            "title": "Epoch Count",
+            "type": "integer"
+          },
+          "gae_lambda": {
+            "default": 0.95,
+            "title": "Gae Lambda",
+            "type": "number"
+          },
+          "minibatch_count": {
+            "default": 1,
+            "title": "Minibatch Count",
+            "type": "integer"
+          },
+          "normalize_advantage": {
+            "default": false,
+            "title": "Normalize Advantage",
+            "type": "boolean"
+          },
+          "pg_clip": {
+            "default": 0.2,
+            "title": "Pg Clip",
+            "type": "number"
+          },
+          "trainer_type": {
+            "const": "ppo",
+            "title": "Trainer Type",
+            "type": "string"
+          },
+          "vf_coef": {
+            "default": 0.05,
+            "title": "Vf Coef",
+            "type": "number"
+          }
+        },
+        "required": [
+          "trainer_type"
+        ],
+        "title": "PPOConfig",
+        "type": "object",
+        "x-order": [
+          "trainer_type",
+          "epoch_count",
+          "minibatch_count",
+          "vf_coef",
+          "entropy_coef",
+          "pg_clip",
+          "discount",
+          "gae_lambda",
+          "normalize_advantage"
+        ]
+      },
+      "RnnConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "rnn",
+            "default": "rnn",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "RnnConfig",
+        "type": "object",
+        "x-order": [
+          "type"
+        ]
+      },
+      "TransformerActorCriticConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "activation": {
+            "enum": [
+              "relu",
+              "gelu",
+              "silu",
+              "mish"
+            ],
+            "title": "Activation",
+            "type": "string"
+          },
+          "dtype": {
+            "default": "float32",
+            "enum": [
+              "float32",
+              "bfloat16",
+              "float16"
+            ],
+            "title": "Dtype",
+            "type": "string"
+          },
+          "hidden_features": {
+            "title": "Hidden Features",
+            "type": "integer"
+          },
+          "kernel_init": {
+            "default": "glorot_uniform",
+            "enum": [
+              "glorot_uniform",
+              "he_uniform",
+              "lecun_uniform",
+              "normal"
+            ],
+            "title": "Kernel Init",
+            "type": "string"
+          },
+          "layer": {
+            "$ref": "#/$defs/LayerConfig"
+          },
+          "norm": {
+            "enum": [
+              "layer_norm",
+              "rms_norm"
+            ],
+            "title": "Norm",
+            "type": "string"
+          },
+          "num_layers": {
+            "title": "Num Layers",
+            "type": "integer"
+          },
+          "obs_encoder": {
+            "discriminator": {
+              "mapping": {
+                "grid_cnn": "#/$defs/GridCnnObsEncoderConfig",
+                "grid_flattened": "#/$defs/FlattenedObsEncoderConfig",
+                "linear": "#/$defs/LinearObsEncoderConfig"
+              },
+              "propertyName": "obs_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/LinearObsEncoderConfig"
+              },
+              {
+                "$ref": "#/$defs/GridCnnObsEncoderConfig"
+              },
+              {
+                "$ref": "#/$defs/FlattenedObsEncoderConfig"
+              }
+            ],
+            "title": "Obs Encoder"
+          },
+          "param_dtype": {
+            "default": "float32",
+            "enum": [
+              "float32",
+              "bfloat16"
+            ],
+            "title": "Param Dtype",
+            "type": "string"
+          },
+          "value": {
+            "discriminator": {
+              "mapping": {
+                "hl_gauss": "#/$defs/HlGaussConfig",
+                "mse": "#/$defs/MseCriticConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MseCriticConfig"
+              },
+              {
+                "$ref": "#/$defs/HlGaussConfig"
+              }
+            ],
+            "title": "Value"
+          },
+          "value_hidden_dim": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value Hidden Dim"
+          }
+        },
+        "required": [
+          "obs_encoder",
+          "hidden_features",
+          "layer",
+          "num_layers",
+          "value",
+          "activation",
+          "norm"
+        ],
+        "title": "TransformerActorCriticConfig",
+        "type": "object",
+        "x-order": [
+          "obs_encoder",
+          "hidden_features",
+          "layer",
+          "num_layers",
+          "value_hidden_dim",
+          "value",
+          "activation",
+          "norm",
+          "kernel_init",
+          "dtype",
+          "param_dtype"
+        ]
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "environment": {
+        "$ref": "#/$defs/EnvironmentConfig"
+      },
+      "learner": {
+        "$ref": "#/$defs/LearnerConfig"
+      },
+      "logger": {
+        "$ref": "#/$defs/LoggerConfig",
+        "default": {
+          "use_console": true,
+          "use_jsonl": true,
+          "use_neptune": false,
+          "use_tb": false,
+          "use_wandb": false
+        }
+      },
+      "max_env_steps": {
+        "title": "Max Env Steps",
+        "type": "integer"
+      },
+      "num_checkpoints": {
+        "default": 5,
+        "title": "Num Checkpoints",
+        "type": "integer"
+      },
+      "seed": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "const": "random",
+            "type": "string"
+          }
+        ],
+        "default": "random",
+        "title": "Seed"
+      },
+      "snapshot_league": {
+        "default": false,
+        "title": "Snapshot League",
+        "type": "boolean"
+      },
+      "update_steps": {
+        "title": "Update Steps",
+        "type": "integer"
+      },
+      "updates_per_jit": {
+        "default": 1,
+        "title": "Updates Per Jit",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "max_env_steps",
+      "update_steps",
+      "learner",
+      "environment"
+    ],
+    "title": "Config",
+    "type": "object",
+    "x-order": [
+      "seed",
+      "max_env_steps",
+      "updates_per_jit",
+      "update_steps",
+      "num_checkpoints",
+      "learner",
+      "environment",
+      "logger",
+      "snapshot_league"
+    ]
+  },
+  "environments": {
+    "craftax": {
+      "additionalProperties": false,
+      "properties": {
+        "env_type": {
+          "const": "craftax",
+          "default": "craftax",
+          "title": "Env Type",
+          "type": "string"
+        }
+      },
+      "title": "CraftaxConfig",
+      "type": "object",
+      "x-order": [
+        "env_type"
+      ]
+    },
+    "find_return": {
+      "additionalProperties": false,
+      "properties": {
+        "digging_timeout": {
+          "default": 5,
+          "title": "Digging Timeout",
+          "type": "integer"
+        },
+        "env_type": {
+          "const": "find_return",
+          "default": "find_return",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "height": {
+          "default": 40,
+          "title": "Height",
+          "type": "integer"
+        },
+        "map_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Path"
+        },
+        "mapgen_threshold": {
+          "default": 0.3,
+          "title": "Mapgen Threshold",
+          "type": "number"
+        },
+        "num_agents": {
+          "default": 1,
+          "title": "Num Agents",
+          "type": "integer"
+        },
+        "num_flags": {
+          "default": 1,
+          "title": "Num Flags",
+          "type": "integer"
+        },
+        "treasure_reward": {
+          "default": 1.0,
+          "title": "Treasure Reward",
+          "type": "number"
+        },
+        "view_height": {
+          "default": 11,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 11,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 40,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "FindReturnConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_agents",
+        "num_flags",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "mapgen_threshold",
+        "digging_timeout",
+        "treasure_reward",
+        "map_path"
+      ]
+    },
+    "king_hill": {
+      "additionalProperties": false,
+      "properties": {
+        "arrow_timeout": {
+          "default": 6,
+          "title": "Arrow Timeout",
+          "type": "integer"
+        },
+        "dig_timeout": {
+          "default": 5,
+          "title": "Dig Timeout",
+          "type": "integer"
+        },
+        "env_type": {
+          "const": "king_hill",
+          "default": "king_hill",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "height": {
+          "default": 40,
+          "title": "Height",
+          "type": "integer"
+        },
+        "melee_timeout": {
+          "default": 3,
+          "title": "Melee Timeout",
+          "type": "integer"
+        },
+        "num_agents": {
+          "default": 8,
+          "title": "Num Agents",
+          "type": "integer"
+        },
+        "num_flags": {
+          "default": 2,
+          "title": "Num Flags",
+          "type": "integer"
+        },
+        "reward_per_turn": {
+          "default": 0.01953125,
+          "title": "Reward Per Turn",
+          "type": "number"
+        },
+        "view_height": {
+          "default": 11,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 11,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 40,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "KingHillConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_agents",
+        "num_flags",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "dig_timeout",
+        "melee_timeout",
+        "reward_per_turn",
+        "arrow_timeout"
+      ]
+    },
+    "multi": {
+      "$defs": {
+        "EnvironmentConfig": {
+          "additionalProperties": true,
+          "description": "Top-level environment config. The env type is resolved through the\nEnvironmentFactory registry at make time, where the config is validated\nagainst the model the env registered with (if any).",
+          "properties": {
+            "env_type": {
+              "title": "Env Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "env_type"
+          ],
+          "title": "EnvironmentConfig",
+          "type": "object",
+          "x-order": [
+            "env_type"
+          ]
+        },
+        "MultiTaskEnvConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "env": {
+              "$ref": "#/$defs/EnvironmentConfig"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "env"
+          ],
+          "title": "MultiTaskEnvConfig",
+          "type": "object",
+          "x-order": [
+            "num",
+            "name",
+            "env"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "env_type": {
+          "const": "multi",
+          "default": "multi",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "envs": {
+          "items": {
+            "$ref": "#/$defs/MultiTaskEnvConfig"
+          },
+          "title": "Envs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "envs"
+      ],
+      "title": "MultiTaskConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "envs"
+      ]
+    },
+    "prey": {
+      "additionalProperties": false,
+      "properties": {
+        "env_type": {
+          "const": "prey",
+          "default": "prey",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "food_regrow_time": {
+          "default": 10,
+          "title": "Food Regrow Time",
+          "type": "integer"
+        },
+        "full_threshold": {
+          "default": 192,
+          "title": "Full Threshold",
+          "type": "integer"
+        },
+        "fullness_per_catch": {
+          "default": 64,
+          "title": "Fullness Per Catch",
+          "type": "integer"
+        },
+        "fullness_per_food": {
+          "default": 32,
+          "title": "Fullness Per Food",
+          "type": "integer"
+        },
+        "grass_threshold": {
+          "default": -0.5,
+          "title": "Grass Threshold",
+          "type": "number"
+        },
+        "height": {
+          "default": 40,
+          "title": "Height",
+          "type": "integer"
+        },
+        "initial_fullness": {
+          "default": 128,
+          "title": "Initial Fullness",
+          "type": "integer"
+        },
+        "max_fullness": {
+          "default": 256,
+          "title": "Max Fullness",
+          "type": "integer"
+        },
+        "num_chasers": {
+          "default": 2,
+          "title": "Num Chasers",
+          "type": "integer"
+        },
+        "num_food": {
+          "default": 15,
+          "title": "Num Food",
+          "type": "integer"
+        },
+        "num_sneakers": {
+          "default": 3,
+          "title": "Num Sneakers",
+          "type": "integer"
+        },
+        "survival_reward_scale": {
+          "default": 0.05,
+          "title": "Survival Reward Scale",
+          "type": "number"
+        },
+        "view_height": {
+          "default": 11,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 11,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 40,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "PreyConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_sneakers",
+        "num_chasers",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "grass_threshold",
+        "num_food",
+        "food_regrow_time",
+        "max_fullness",
+        "initial_fullness",
+        "fullness_per_food",
+        "fullness_per_catch",
+        "full_threshold",
+        "survival_reward_scale"
+      ]
+    },
+    "rust_find_return": {
+      "additionalProperties": false,
+      "properties": {
+        "digging_timeout": {
+          "default": 5,
+          "title": "Digging Timeout",
+          "type": "integer"
+        },
+        "env_type": {
+          "const": "rust_find_return",
+          "default": "rust_find_return",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "height": {
+          "default": 70,
+          "title": "Height",
+          "type": "integer"
+        },
+        "mapgen_threshold": {
+          "default": 0.07,
+          "title": "Mapgen Threshold",
+          "type": "number"
+        },
+        "num_agents": {
+          "default": 8,
+          "title": "Num Agents",
+          "type": "integer"
+        },
+        "num_flags": {
+          "default": 1,
+          "title": "Num Flags",
+          "type": "integer"
+        },
+        "preparation_steps": {
+          "default": 256,
+          "title": "Preparation Steps",
+          "type": "integer"
+        },
+        "treasure_reward": {
+          "default": 1.0,
+          "title": "Treasure Reward",
+          "type": "number"
+        },
+        "view_height": {
+          "default": 15,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 15,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "water_threshold": {
+          "default": -0.45,
+          "title": "Water Threshold",
+          "type": "number"
+        },
+        "width": {
+          "default": 80,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "RustFindReturnConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_agents",
+        "num_flags",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "mapgen_threshold",
+        "water_threshold",
+        "digging_timeout",
+        "preparation_steps",
+        "treasure_reward"
+      ]
+    },
+    "rust_multi": {
+      "$defs": {
+        "RustFindReturnConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "digging_timeout": {
+              "default": 5,
+              "title": "Digging Timeout",
+              "type": "integer"
+            },
+            "env_type": {
+              "const": "rust_find_return",
+              "default": "rust_find_return",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "mapgen_threshold": {
+              "default": 0.07,
+              "title": "Mapgen Threshold",
+              "type": "number"
+            },
+            "num_agents": {
+              "default": 8,
+              "title": "Num Agents",
+              "type": "integer"
+            },
+            "num_flags": {
+              "default": 1,
+              "title": "Num Flags",
+              "type": "integer"
+            },
+            "preparation_steps": {
+              "default": 256,
+              "title": "Preparation Steps",
+              "type": "integer"
+            },
+            "treasure_reward": {
+              "default": 1.0,
+              "title": "Treasure Reward",
+              "type": "number"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "water_threshold": {
+              "default": -0.45,
+              "title": "Water Threshold",
+              "type": "number"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustFindReturnConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_agents",
+            "num_flags",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "mapgen_threshold",
+            "water_threshold",
+            "digging_timeout",
+            "preparation_steps",
+            "treasure_reward"
+          ]
+        },
+        "RustMultiConfig": {
+          "additionalProperties": false,
+          "description": "A batch of rust envs; the rust MultitaskWrapper is the vectorizer.",
+          "properties": {
+            "env_type": {
+              "const": "rust_multi",
+              "default": "rust_multi",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "envs": {
+              "items": {
+                "$ref": "#/$defs/RustMultiEnvSpec"
+              },
+              "title": "Envs",
+              "type": "array"
+            }
+          },
+          "required": [
+            "envs"
+          ],
+          "title": "RustMultiConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "envs"
+          ]
+        },
+        "RustMultiEnvSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "env"
+          ],
+          "title": "RustMultiEnvSpec",
+          "type": "object",
+          "x-order": [
+            "name",
+            "num",
+            "env"
+          ]
+        },
+        "RustScoutsConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "env_type": {
+              "const": "rust_scouts",
+              "default": "rust_scouts",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "harvester_reward": {
+              "default": 1.0,
+              "title": "Harvester Reward",
+              "type": "number"
+            },
+            "harvesters_move_every": {
+              "default": 6,
+              "title": "Harvesters Move Every",
+              "type": "integer"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "mapgen_threshold": {
+              "default": 0.07,
+              "title": "Mapgen Threshold",
+              "type": "number"
+            },
+            "num_harvesters": {
+              "default": 1,
+              "title": "Num Harvesters",
+              "type": "integer"
+            },
+            "num_scouts": {
+              "default": 1,
+              "title": "Num Scouts",
+              "type": "integer"
+            },
+            "num_treasures": {
+              "default": 12,
+              "title": "Num Treasures",
+              "type": "integer"
+            },
+            "scout_reward": {
+              "default": 1.0,
+              "title": "Scout Reward",
+              "type": "number"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "water_threshold": {
+              "default": -0.45,
+              "title": "Water Threshold",
+              "type": "number"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustScoutsConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_scouts",
+            "num_harvesters",
+            "num_treasures",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "mapgen_threshold",
+            "water_threshold",
+            "harvesters_move_every",
+            "scout_reward",
+            "harvester_reward"
+          ]
+        },
+        "RustSnakeConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "death_reward": {
+              "default": 0.0,
+              "title": "Death Reward",
+              "type": "number"
+            },
+            "env_type": {
+              "const": "rust_snake",
+              "default": "rust_snake",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "food_reward": {
+              "default": 0.01,
+              "title": "Food Reward",
+              "type": "number"
+            },
+            "food_spawn_prob": {
+              "default": 0.0001,
+              "title": "Food Spawn Prob",
+              "type": "number"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "num_agents": {
+              "default": 16,
+              "title": "Num Agents",
+              "type": "integer"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustSnakeConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_agents",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "food_spawn_prob",
+            "food_reward",
+            "death_reward"
+          ]
+        },
+        "RustVecConfig": {
+          "additionalProperties": false,
+          "description": "Vectorized copies of one rust env; the rust side steps them in parallel.",
+          "properties": {
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "env_type": {
+              "const": "rust_vec",
+              "default": "rust_vec",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "env"
+          ],
+          "title": "RustVecConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num",
+            "env"
+          ]
+        },
+        "RustVideoConfig": {
+          "additionalProperties": false,
+          "description": "Records the wrapped env's render view to mp4 clips with ffmpeg.\n\nWraps outside a vector/multi env so there is one encoder per training run,\nnot per instance. One post-step frame per recorded step; fps controls\nplayback, not training speed.",
+          "properties": {
+            "crf": {
+              "default": 23,
+              "title": "Crf",
+              "type": "integer"
+            },
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "env_type": {
+              "const": "rust_video",
+              "default": "rust_video",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "fps": {
+              "default": 30,
+              "title": "Fps",
+              "type": "integer"
+            },
+            "height": {
+              "default": 480,
+              "title": "Height",
+              "type": "integer"
+            },
+            "interval_steps": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 10000,
+              "title": "Interval Steps"
+            },
+            "output_dir": {
+              "default": "videos",
+              "title": "Output Dir",
+              "type": "string"
+            },
+            "record_steps": {
+              "default": 256,
+              "title": "Record Steps",
+              "type": "integer"
+            },
+            "start_step": {
+              "default": 0,
+              "title": "Start Step",
+              "type": "integer"
+            },
+            "width": {
+              "default": 640,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "env"
+          ],
+          "title": "RustVideoConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "env",
+            "output_dir",
+            "record_steps",
+            "interval_steps",
+            "start_step",
+            "fps",
+            "width",
+            "height",
+            "crf"
+          ]
+        }
+      },
+      "$ref": "#/$defs/RustMultiConfig"
+    },
+    "rust_scouts": {
+      "additionalProperties": false,
+      "properties": {
+        "env_type": {
+          "const": "rust_scouts",
+          "default": "rust_scouts",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "harvester_reward": {
+          "default": 1.0,
+          "title": "Harvester Reward",
+          "type": "number"
+        },
+        "harvesters_move_every": {
+          "default": 6,
+          "title": "Harvesters Move Every",
+          "type": "integer"
+        },
+        "height": {
+          "default": 70,
+          "title": "Height",
+          "type": "integer"
+        },
+        "mapgen_threshold": {
+          "default": 0.07,
+          "title": "Mapgen Threshold",
+          "type": "number"
+        },
+        "num_harvesters": {
+          "default": 1,
+          "title": "Num Harvesters",
+          "type": "integer"
+        },
+        "num_scouts": {
+          "default": 1,
+          "title": "Num Scouts",
+          "type": "integer"
+        },
+        "num_treasures": {
+          "default": 12,
+          "title": "Num Treasures",
+          "type": "integer"
+        },
+        "scout_reward": {
+          "default": 1.0,
+          "title": "Scout Reward",
+          "type": "number"
+        },
+        "view_height": {
+          "default": 15,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 15,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "water_threshold": {
+          "default": -0.45,
+          "title": "Water Threshold",
+          "type": "number"
+        },
+        "width": {
+          "default": 80,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "RustScoutsConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_scouts",
+        "num_harvesters",
+        "num_treasures",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "mapgen_threshold",
+        "water_threshold",
+        "harvesters_move_every",
+        "scout_reward",
+        "harvester_reward"
+      ]
+    },
+    "rust_snake": {
+      "additionalProperties": false,
+      "properties": {
+        "death_reward": {
+          "default": 0.0,
+          "title": "Death Reward",
+          "type": "number"
+        },
+        "env_type": {
+          "const": "rust_snake",
+          "default": "rust_snake",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "food_reward": {
+          "default": 0.01,
+          "title": "Food Reward",
+          "type": "number"
+        },
+        "food_spawn_prob": {
+          "default": 0.0001,
+          "title": "Food Spawn Prob",
+          "type": "number"
+        },
+        "height": {
+          "default": 70,
+          "title": "Height",
+          "type": "integer"
+        },
+        "num_agents": {
+          "default": 16,
+          "title": "Num Agents",
+          "type": "integer"
+        },
+        "view_height": {
+          "default": 15,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 15,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 80,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "RustSnakeConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_agents",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "food_spawn_prob",
+        "food_reward",
+        "death_reward"
+      ]
+    },
+    "rust_vec": {
+      "$defs": {
+        "RustEnvConfig": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RustFindReturnConfig"
+            },
+            {
+              "$ref": "#/$defs/RustScoutsConfig"
+            },
+            {
+              "$ref": "#/$defs/RustSnakeConfig"
+            },
+            {
+              "$ref": "#/$defs/RustVideoConfig"
+            },
+            {
+              "$ref": "#/$defs/RustVecConfig"
+            },
+            {
+              "$ref": "#/$defs/RustMultiConfig"
+            }
+          ]
+        },
+        "RustFindReturnConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "digging_timeout": {
+              "default": 5,
+              "title": "Digging Timeout",
+              "type": "integer"
+            },
+            "env_type": {
+              "const": "rust_find_return",
+              "default": "rust_find_return",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "mapgen_threshold": {
+              "default": 0.07,
+              "title": "Mapgen Threshold",
+              "type": "number"
+            },
+            "num_agents": {
+              "default": 8,
+              "title": "Num Agents",
+              "type": "integer"
+            },
+            "num_flags": {
+              "default": 1,
+              "title": "Num Flags",
+              "type": "integer"
+            },
+            "preparation_steps": {
+              "default": 256,
+              "title": "Preparation Steps",
+              "type": "integer"
+            },
+            "treasure_reward": {
+              "default": 1.0,
+              "title": "Treasure Reward",
+              "type": "number"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "water_threshold": {
+              "default": -0.45,
+              "title": "Water Threshold",
+              "type": "number"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustFindReturnConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_agents",
+            "num_flags",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "mapgen_threshold",
+            "water_threshold",
+            "digging_timeout",
+            "preparation_steps",
+            "treasure_reward"
+          ]
+        },
+        "RustMultiConfig": {
+          "additionalProperties": false,
+          "description": "A batch of rust envs; the rust MultitaskWrapper is the vectorizer.",
+          "properties": {
+            "env_type": {
+              "const": "rust_multi",
+              "default": "rust_multi",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "envs": {
+              "items": {
+                "$ref": "#/$defs/RustMultiEnvSpec"
+              },
+              "title": "Envs",
+              "type": "array"
+            }
+          },
+          "required": [
+            "envs"
+          ],
+          "title": "RustMultiConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "envs"
+          ]
+        },
+        "RustMultiEnvSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "env": {
+              "$ref": "#/$defs/RustEnvConfig"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "env"
+          ],
+          "title": "RustMultiEnvSpec",
+          "type": "object",
+          "x-order": [
+            "name",
+            "num",
+            "env"
+          ]
+        },
+        "RustScoutsConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "env_type": {
+              "const": "rust_scouts",
+              "default": "rust_scouts",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "harvester_reward": {
+              "default": 1.0,
+              "title": "Harvester Reward",
+              "type": "number"
+            },
+            "harvesters_move_every": {
+              "default": 6,
+              "title": "Harvesters Move Every",
+              "type": "integer"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "mapgen_threshold": {
+              "default": 0.07,
+              "title": "Mapgen Threshold",
+              "type": "number"
+            },
+            "num_harvesters": {
+              "default": 1,
+              "title": "Num Harvesters",
+              "type": "integer"
+            },
+            "num_scouts": {
+              "default": 1,
+              "title": "Num Scouts",
+              "type": "integer"
+            },
+            "num_treasures": {
+              "default": 12,
+              "title": "Num Treasures",
+              "type": "integer"
+            },
+            "scout_reward": {
+              "default": 1.0,
+              "title": "Scout Reward",
+              "type": "number"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "water_threshold": {
+              "default": -0.45,
+              "title": "Water Threshold",
+              "type": "number"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustScoutsConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_scouts",
+            "num_harvesters",
+            "num_treasures",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "mapgen_threshold",
+            "water_threshold",
+            "harvesters_move_every",
+            "scout_reward",
+            "harvester_reward"
+          ]
+        },
+        "RustSnakeConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "death_reward": {
+              "default": 0.0,
+              "title": "Death Reward",
+              "type": "number"
+            },
+            "env_type": {
+              "const": "rust_snake",
+              "default": "rust_snake",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "food_reward": {
+              "default": 0.01,
+              "title": "Food Reward",
+              "type": "number"
+            },
+            "food_spawn_prob": {
+              "default": 0.0001,
+              "title": "Food Spawn Prob",
+              "type": "number"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "num_agents": {
+              "default": 16,
+              "title": "Num Agents",
+              "type": "integer"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustSnakeConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_agents",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "food_spawn_prob",
+            "food_reward",
+            "death_reward"
+          ]
+        },
+        "RustVecConfig": {
+          "additionalProperties": false,
+          "description": "Vectorized copies of one rust env; the rust side steps them in parallel.",
+          "properties": {
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "env_type": {
+              "const": "rust_vec",
+              "default": "rust_vec",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "env"
+          ],
+          "title": "RustVecConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num",
+            "env"
+          ]
+        },
+        "RustVideoConfig": {
+          "additionalProperties": false,
+          "description": "Records the wrapped env's render view to mp4 clips with ffmpeg.\n\nWraps outside a vector/multi env so there is one encoder per training run,\nnot per instance. One post-step frame per recorded step; fps controls\nplayback, not training speed.",
+          "properties": {
+            "crf": {
+              "default": 23,
+              "title": "Crf",
+              "type": "integer"
+            },
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "env_type": {
+              "const": "rust_video",
+              "default": "rust_video",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "fps": {
+              "default": 30,
+              "title": "Fps",
+              "type": "integer"
+            },
+            "height": {
+              "default": 480,
+              "title": "Height",
+              "type": "integer"
+            },
+            "interval_steps": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 10000,
+              "title": "Interval Steps"
+            },
+            "output_dir": {
+              "default": "videos",
+              "title": "Output Dir",
+              "type": "string"
+            },
+            "record_steps": {
+              "default": 256,
+              "title": "Record Steps",
+              "type": "integer"
+            },
+            "start_step": {
+              "default": 0,
+              "title": "Start Step",
+              "type": "integer"
+            },
+            "width": {
+              "default": 640,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "env"
+          ],
+          "title": "RustVideoConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "env",
+            "output_dir",
+            "record_steps",
+            "interval_steps",
+            "start_step",
+            "fps",
+            "width",
+            "height",
+            "crf"
+          ]
+        }
+      },
+      "$ref": "#/$defs/RustVecConfig"
+    },
+    "rust_video": {
+      "$defs": {
+        "RustEnvConfig": {
+          "discriminator": {
+            "mapping": {
+              "rust_find_return": "#/$defs/RustFindReturnConfig",
+              "rust_multi": "#/$defs/RustMultiConfig",
+              "rust_scouts": "#/$defs/RustScoutsConfig",
+              "rust_snake": "#/$defs/RustSnakeConfig",
+              "rust_vec": "#/$defs/RustVecConfig",
+              "rust_video": "#/$defs/RustVideoConfig"
+            },
+            "propertyName": "env_type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RustFindReturnConfig"
+            },
+            {
+              "$ref": "#/$defs/RustScoutsConfig"
+            },
+            {
+              "$ref": "#/$defs/RustSnakeConfig"
+            },
+            {
+              "$ref": "#/$defs/RustVideoConfig"
+            },
+            {
+              "$ref": "#/$defs/RustVecConfig"
+            },
+            {
+              "$ref": "#/$defs/RustMultiConfig"
+            }
+          ]
+        },
+        "RustFindReturnConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "digging_timeout": {
+              "default": 5,
+              "title": "Digging Timeout",
+              "type": "integer"
+            },
+            "env_type": {
+              "const": "rust_find_return",
+              "default": "rust_find_return",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "mapgen_threshold": {
+              "default": 0.07,
+              "title": "Mapgen Threshold",
+              "type": "number"
+            },
+            "num_agents": {
+              "default": 8,
+              "title": "Num Agents",
+              "type": "integer"
+            },
+            "num_flags": {
+              "default": 1,
+              "title": "Num Flags",
+              "type": "integer"
+            },
+            "preparation_steps": {
+              "default": 256,
+              "title": "Preparation Steps",
+              "type": "integer"
+            },
+            "treasure_reward": {
+              "default": 1.0,
+              "title": "Treasure Reward",
+              "type": "number"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "water_threshold": {
+              "default": -0.45,
+              "title": "Water Threshold",
+              "type": "number"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustFindReturnConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_agents",
+            "num_flags",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "mapgen_threshold",
+            "water_threshold",
+            "digging_timeout",
+            "preparation_steps",
+            "treasure_reward"
+          ]
+        },
+        "RustMultiConfig": {
+          "additionalProperties": false,
+          "description": "A batch of rust envs; the rust MultitaskWrapper is the vectorizer.",
+          "properties": {
+            "env_type": {
+              "const": "rust_multi",
+              "default": "rust_multi",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "envs": {
+              "items": {
+                "$ref": "#/$defs/RustMultiEnvSpec"
+              },
+              "title": "Envs",
+              "type": "array"
+            }
+          },
+          "required": [
+            "envs"
+          ],
+          "title": "RustMultiConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "envs"
+          ]
+        },
+        "RustMultiEnvSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "env": {
+              "$ref": "#/$defs/RustEnvConfig"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "env"
+          ],
+          "title": "RustMultiEnvSpec",
+          "type": "object",
+          "x-order": [
+            "name",
+            "num",
+            "env"
+          ]
+        },
+        "RustScoutsConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "env_type": {
+              "const": "rust_scouts",
+              "default": "rust_scouts",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "harvester_reward": {
+              "default": 1.0,
+              "title": "Harvester Reward",
+              "type": "number"
+            },
+            "harvesters_move_every": {
+              "default": 6,
+              "title": "Harvesters Move Every",
+              "type": "integer"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "mapgen_threshold": {
+              "default": 0.07,
+              "title": "Mapgen Threshold",
+              "type": "number"
+            },
+            "num_harvesters": {
+              "default": 1,
+              "title": "Num Harvesters",
+              "type": "integer"
+            },
+            "num_scouts": {
+              "default": 1,
+              "title": "Num Scouts",
+              "type": "integer"
+            },
+            "num_treasures": {
+              "default": 12,
+              "title": "Num Treasures",
+              "type": "integer"
+            },
+            "scout_reward": {
+              "default": 1.0,
+              "title": "Scout Reward",
+              "type": "number"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "water_threshold": {
+              "default": -0.45,
+              "title": "Water Threshold",
+              "type": "number"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustScoutsConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_scouts",
+            "num_harvesters",
+            "num_treasures",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "mapgen_threshold",
+            "water_threshold",
+            "harvesters_move_every",
+            "scout_reward",
+            "harvester_reward"
+          ]
+        },
+        "RustSnakeConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "death_reward": {
+              "default": 0.0,
+              "title": "Death Reward",
+              "type": "number"
+            },
+            "env_type": {
+              "const": "rust_snake",
+              "default": "rust_snake",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "food_reward": {
+              "default": 0.01,
+              "title": "Food Reward",
+              "type": "number"
+            },
+            "food_spawn_prob": {
+              "default": 0.0001,
+              "title": "Food Spawn Prob",
+              "type": "number"
+            },
+            "height": {
+              "default": 70,
+              "title": "Height",
+              "type": "integer"
+            },
+            "num_agents": {
+              "default": 16,
+              "title": "Num Agents",
+              "type": "integer"
+            },
+            "view_height": {
+              "default": 15,
+              "title": "View Height",
+              "type": "integer"
+            },
+            "view_width": {
+              "default": 15,
+              "title": "View Width",
+              "type": "integer"
+            },
+            "width": {
+              "default": 80,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "title": "RustSnakeConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num_agents",
+            "width",
+            "height",
+            "view_width",
+            "view_height",
+            "food_spawn_prob",
+            "food_reward",
+            "death_reward"
+          ]
+        },
+        "RustVecConfig": {
+          "additionalProperties": false,
+          "description": "Vectorized copies of one rust env; the rust side steps them in parallel.",
+          "properties": {
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "env_type": {
+              "const": "rust_vec",
+              "default": "rust_vec",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "num": {
+              "default": 1,
+              "title": "Num",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "env"
+          ],
+          "title": "RustVecConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "num",
+            "env"
+          ]
+        },
+        "RustVideoConfig": {
+          "additionalProperties": false,
+          "description": "Records the wrapped env's render view to mp4 clips with ffmpeg.\n\nWraps outside a vector/multi env so there is one encoder per training run,\nnot per instance. One post-step frame per recorded step; fps controls\nplayback, not training speed.",
+          "properties": {
+            "crf": {
+              "default": 23,
+              "title": "Crf",
+              "type": "integer"
+            },
+            "env": {
+              "discriminator": {
+                "mapping": {
+                  "rust_find_return": "#/$defs/RustFindReturnConfig",
+                  "rust_multi": "#/$defs/RustMultiConfig",
+                  "rust_scouts": "#/$defs/RustScoutsConfig",
+                  "rust_snake": "#/$defs/RustSnakeConfig",
+                  "rust_vec": "#/$defs/RustVecConfig",
+                  "rust_video": "#/$defs/RustVideoConfig"
+                },
+                "propertyName": "env_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RustFindReturnConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustScoutsConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustSnakeConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVideoConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustVecConfig"
+                },
+                {
+                  "$ref": "#/$defs/RustMultiConfig"
+                }
+              ],
+              "title": "Env"
+            },
+            "env_type": {
+              "const": "rust_video",
+              "default": "rust_video",
+              "title": "Env Type",
+              "type": "string"
+            },
+            "fps": {
+              "default": 30,
+              "title": "Fps",
+              "type": "integer"
+            },
+            "height": {
+              "default": 480,
+              "title": "Height",
+              "type": "integer"
+            },
+            "interval_steps": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 10000,
+              "title": "Interval Steps"
+            },
+            "output_dir": {
+              "default": "videos",
+              "title": "Output Dir",
+              "type": "string"
+            },
+            "record_steps": {
+              "default": 256,
+              "title": "Record Steps",
+              "type": "integer"
+            },
+            "start_step": {
+              "default": 0,
+              "title": "Start Step",
+              "type": "integer"
+            },
+            "width": {
+              "default": 640,
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "env"
+          ],
+          "title": "RustVideoConfig",
+          "type": "object",
+          "x-order": [
+            "env_type",
+            "env",
+            "output_dir",
+            "record_steps",
+            "interval_steps",
+            "start_step",
+            "fps",
+            "width",
+            "height",
+            "crf"
+          ]
+        }
+      },
+      "$ref": "#/$defs/RustVideoConfig"
+    },
+    "scouts": {
+      "additionalProperties": false,
+      "properties": {
+        "env_type": {
+          "const": "scouts",
+          "default": "scouts",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "harvester_reward": {
+          "default": 1.0,
+          "title": "Harvester Reward",
+          "type": "number"
+        },
+        "harvesters_move_every": {
+          "default": 6,
+          "title": "Harvesters Move Every",
+          "type": "integer"
+        },
+        "height": {
+          "default": 40,
+          "title": "Height",
+          "type": "integer"
+        },
+        "map_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Path"
+        },
+        "num_harvesters": {
+          "default": 1,
+          "title": "Num Harvesters",
+          "type": "integer"
+        },
+        "num_scouts": {
+          "default": 1,
+          "title": "Num Scouts",
+          "type": "integer"
+        },
+        "num_treasures": {
+          "default": 12,
+          "title": "Num Treasures",
+          "type": "integer"
+        },
+        "scout_reward": {
+          "default": 1.0,
+          "title": "Scout Reward",
+          "type": "number"
+        },
+        "view_height": {
+          "default": 11,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 11,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 40,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "ScoutsConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_scouts",
+        "num_harvesters",
+        "num_treasures",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "harvesters_move_every",
+        "scout_reward",
+        "harvester_reward",
+        "map_path"
+      ]
+    },
+    "snake": {
+      "additionalProperties": false,
+      "properties": {
+        "death_reward": {
+          "default": -1.0,
+          "title": "Death Reward",
+          "type": "number"
+        },
+        "env_type": {
+          "const": "snake",
+          "default": "snake",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "food_reward": {
+          "default": 1.0,
+          "title": "Food Reward",
+          "type": "number"
+        },
+        "food_spawn_prob": {
+          "default": 0.15,
+          "title": "Food Spawn Prob",
+          "type": "number"
+        },
+        "height": {
+          "default": 24,
+          "title": "Height",
+          "type": "integer"
+        },
+        "initial_food": {
+          "default": 8,
+          "title": "Initial Food",
+          "type": "integer"
+        },
+        "initial_length": {
+          "default": 3,
+          "title": "Initial Length",
+          "type": "integer"
+        },
+        "max_length": {
+          "default": 64,
+          "title": "Max Length",
+          "type": "integer"
+        },
+        "num_agents": {
+          "default": 4,
+          "title": "Num Agents",
+          "type": "integer"
+        },
+        "view_height": {
+          "default": 11,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 11,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 24,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "SnakeConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_agents",
+        "width",
+        "height",
+        "view_width",
+        "view_height",
+        "initial_length",
+        "max_length",
+        "initial_food",
+        "food_spawn_prob",
+        "food_reward",
+        "death_reward"
+      ]
+    },
+    "traveling_salesman": {
+      "additionalProperties": false,
+      "properties": {
+        "env_type": {
+          "const": "traveling_salesman",
+          "default": "traveling_salesman",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "flag_reward": {
+          "default": 0.3333333333333333,
+          "title": "Flag Reward",
+          "type": "number"
+        },
+        "height": {
+          "default": 40,
+          "title": "Height",
+          "type": "integer"
+        },
+        "num_agents": {
+          "default": 2,
+          "title": "Num Agents",
+          "type": "integer"
+        },
+        "num_flags": {
+          "default": 8,
+          "title": "Num Flags",
+          "type": "integer"
+        },
+        "view_height": {
+          "default": 11,
+          "title": "View Height",
+          "type": "integer"
+        },
+        "view_width": {
+          "default": 11,
+          "title": "View Width",
+          "type": "integer"
+        },
+        "width": {
+          "default": 40,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "TravelingSalesmanConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num_agents",
+        "num_flags",
+        "flag_reward",
+        "width",
+        "height",
+        "view_width",
+        "view_height"
+      ]
+    },
+    "vec": {
+      "$defs": {
+        "EnvironmentConfig": {
+          "additionalProperties": true,
+          "description": "Top-level environment config. The env type is resolved through the\nEnvironmentFactory registry at make time, where the config is validated\nagainst the model the env registered with (if any).",
+          "properties": {
+            "env_type": {
+              "title": "Env Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "env_type"
+          ],
+          "title": "EnvironmentConfig",
+          "type": "object",
+          "x-order": [
+            "env_type"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "description": "Vectorized copies of one env; rust envs are stepped in parallel,\nJAX envs are vmapped.",
+      "properties": {
+        "env": {
+          "$ref": "#/$defs/EnvironmentConfig"
+        },
+        "env_type": {
+          "const": "vec",
+          "default": "vec",
+          "title": "Env Type",
+          "type": "string"
+        },
+        "num": {
+          "default": 1,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "env"
+      ],
+      "title": "VecConfig",
+      "type": "object",
+      "x-order": [
+        "env_type",
+        "num",
+        "env"
+      ]
+    }
+  }
+}

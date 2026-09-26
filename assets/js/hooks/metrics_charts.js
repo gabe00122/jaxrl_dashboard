@@ -1,21 +1,26 @@
-// Live training-metric charts for a run: one small uPlot line chart per
-// metric, grouped by prefix ("algo/...", "env/..."), with a filter and an
-// EMA smoothing control above them.
+// Training-metric charts for one run or several runs side by side: one small
+// uPlot line chart per metric, grouped by prefix ("algo/...", "env/..."),
+// with a filter, EMA smoothing, a chart/table toggle and per-chart expand.
 //
-// Server protocol (see RunLive.Show):
-//   pushEvent("load_metrics") -> {steps, series: {key: [..]}, nan: {key: {first, last, count}}}
-//   handleEvent("metrics_append", {rows: [{step, values: {key: v}, nan: [key]}]})
+// data-mode="single" (a run's page): the run's raw values drawn faint behind
+//   the smoothed line, its latest value in each card, and a shaded band where
+//   it diverged to NaN.
+// data-mode="compare": one smoothed line per run, colored by the run's slot
+//   (--series-N), with every run's value in the tooltip.
+//
+// Server protocol (RunLive.Show, CompareLive):
+//   pushEvent("load_metrics") ->
+//     {runs: [{name, slot, steps, series: {key: [..]}, nan: {key: {first, last, count}}}]}
+//   handleEvent("metrics_append", {run, rows: [{step, values: {key: v}, nan: [key]}]})
+//   handleEvent("metrics_reload") -> load again (the compared runs changed)
 import uPlot from "uplot"
 
 const SMOOTHING_STORAGE_KEY = "metrics:smoothing"
 const DEFAULT_SMOOTHING = 0.6
 const CHART_HEIGHT = 160
+const EXPANDED_HEIGHT = 420
 const SYNC_KEY = "run-metrics"
-
-// Validated against the app's base-100 surfaces (dataviz palette slot 1).
-const SERIES_COLOR = { light: "#2a78d6", dark: "#3987e5" }
-
-const theme = () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light")
+const CRITICAL = "#d03b3b"
 
 // Resolves a Tailwind color class to a computed color string for the canvas.
 function cssColor(className) {
@@ -28,14 +33,15 @@ function cssColor(className) {
   return color
 }
 
+const seriesColor = (slot) =>
+  getComputedStyle(document.documentElement).getPropertyValue(`--series-${slot + 1}`).trim()
+
 function chromeColors() {
   return {
     axis: cssColor("text-base-content/60"),
     // Hairline one step off the surface in either theme.
     grid: cssColor("text-base-content/10"),
     surface: cssColor("text-base-100"),
-    series: SERIES_COLOR[theme()],
-    seriesFaint: SERIES_COLOR[theme()] + "40",
   }
 }
 
@@ -71,44 +77,20 @@ function smooth(values, weight) {
   return out
 }
 
-const CRITICAL = "#d03b3b"
-
-// Tells a run that diverged (NaN from some step to the end) apart from
-// occasional NaNs. `diverged` runs get a shaded band and a NaN latest value.
-function nanSummary(nan, steps) {
-  if (nan.count >= steps.length) return { diverged: true, label: "NaN at every step" }
-  const stepsSinceFirst = steps.length - steps.findIndex((s) => s >= nan.first)
-  if (nan.last === steps[steps.length - 1] && nan.count >= stepsSinceFirst) {
-    return { diverged: true, label: `NaN from step ${formatStep(nan.first)}` }
-  }
-  return { diverged: false, label: `NaN at ${compact.format(nan.count)} ${nan.count === 1 ? "step" : "steps"}` }
-}
-
-// Washes the diverged stretch of the plot in the critical hue.
-function nanBandPlugin(chart) {
-  return {
-    hooks: {
-      drawClear: (u) => {
-        const band = chart.nanBand
-        if (!band) return
-        const x0 = u.valToPos(band.from, "x", true)
-        const x1 = u.valToPos(band.to, "x", true)
-        const { top, height, left, width } = u.bbox
-        const start = Math.max(Math.min(x0, x1), left)
-        const end = Math.min(Math.max(x0, x1), left + width)
-        if (end <= start) return
-        u.ctx.save()
-        u.ctx.fillStyle = CRITICAL + "1a"
-        u.ctx.fillRect(start, top, Math.max(end - start, 2), height)
-        u.ctx.restore()
-      },
-    },
-  }
-}
-
 function lastValue(values) {
   for (let i = values.length - 1; i >= 0; i--) if (values[i] != null) return values[i]
   return null
+}
+
+function extent(values) {
+  let min = null
+  let max = null
+  for (const v of values) {
+    if (v == null) continue
+    if (min == null || v < min) min = v
+    if (max == null || v > max) max = v
+  }
+  return [min, max]
 }
 
 function splitKey(key) {
@@ -119,30 +101,92 @@ function splitKey(key) {
 function el(tag, className, text) {
   const node = document.createElement(tag)
   if (className) node.className = className
-  // Metric names come from the log file: always textContent, never innerHTML.
+  // Metric and run names come from files on disk: always textContent.
   if (text != null) node.textContent = text
   return node
 }
 
-// Crosshair readout for the chart under the pointer (the others only show the
-// synced crosshair). Values lead, labels follow.
+function icon(name, className = "size-3.5") {
+  return el("span", `${name} ${className}`)
+}
+
+// A short stroke in the series color: identity for tooltip rows and table
+// headers (text itself stays in text colors).
+function lineKey(color, faint = false) {
+  const key = el("span", "inline-block h-0.5 w-3 shrink-0 rounded-full")
+  key.style.background = color
+  if (faint) key.style.opacity = "0.4"
+  return key
+}
+
+// Tells a run that diverged (NaN from some step to the end) apart from
+// occasional NaNs.
+function nanSummary(nan, steps) {
+  if (nan.count >= steps.length) return { diverged: true, label: "NaN at every step" }
+  const stepsSinceFirst = steps.length - steps.findIndex((s) => s >= nan.first)
+  if (nan.last === steps[steps.length - 1] && nan.count >= stepsSinceFirst) {
+    return { diverged: true, label: `NaN from step ${formatStep(nan.first)}` }
+  }
+  return { diverged: false, label: `NaN at ${compact.format(nan.count)} ${nan.count === 1 ? "step" : "steps"}` }
+}
+
+// Puts several runs' values for one metric on a shared x axis (the union of
+// their steps). jaxrl logs steps 0..n-1, which takes the fast path.
+function align(runs, key) {
+  const withKey = runs.filter((run) => run.series[key])
+  const contiguous = withKey.every((run) => run.steps.length === 0 || run.steps[run.steps.length - 1] === run.steps.length - 1)
+
+  if (contiguous) {
+    const length = Math.max(0, ...withKey.map((run) => run.steps.length))
+    const x = Array.from({ length }, (_, i) => i)
+    const ys = runs.map((run) => {
+      const values = run.series[key] ?? []
+      return values.length === length ? values : values.concat(new Array(length - values.length).fill(null))
+    })
+    return { x, ys }
+  }
+
+  const x = [...new Set(withKey.flatMap((run) => run.steps))].sort((a, b) => a - b)
+  const position = new Map(x.map((step, i) => [step, i]))
+  const ys = runs.map((run) => {
+    const out = new Array(x.length).fill(null)
+    const values = run.series[key]
+    if (values) run.steps.forEach((step, i) => (out[position.get(step)] = values[i]))
+    return out
+  })
+  return { x, ys }
+}
+
+// Washes the diverged stretch of a single run's plot in the critical hue.
+function nanBandPlugin(chart) {
+  return {
+    hooks: {
+      drawClear: (u) => {
+        const band = chart.nanBand
+        if (!band) return
+        const { top, height, left, width } = u.bbox
+        const start = Math.max(u.valToPos(band.from, "x", true), left)
+        const end = Math.min(u.valToPos(band.to, "x", true), left + width)
+        if (end < start) return
+        u.ctx.save()
+        u.ctx.fillStyle = CRITICAL + "1a"
+        u.ctx.fillRect(start, top, Math.max(end - start, 2), height)
+        u.ctx.restore()
+      },
+    },
+  }
+}
+
+// Readout for the chart under the pointer (the others only show the synced
+// crosshair). Values lead, labels follow.
 function tooltipPlugin(chart) {
   let tip
   let hovering = false
 
-  const row = (value, label, color, faint) => {
-    const line = el("div", "flex items-center gap-2")
-    const key = el("span", "inline-block h-0.5 w-3 rounded-full")
-    key.style.background = color
-    if (faint) key.style.opacity = "0.4"
-    line.append(key, el("span", "font-semibold tabular-nums", formatValue(value)), el("span", "text-base-content/60", label))
-    return line
-  }
-
   return {
     hooks: {
       init: (u) => {
-        tip = el("div", "pointer-events-none absolute top-1 z-10 hidden rounded-field border border-base-300 bg-base-100 px-2 py-1.5 text-xs shadow-sm")
+        tip = el("div", "pointer-events-none absolute top-1 z-10 hidden max-w-72 rounded-field border border-base-300 bg-base-100 px-2 py-1.5 text-xs shadow-sm")
         u.over.appendChild(tip)
         u.over.addEventListener("mouseenter", () => (hovering = true))
         u.over.addEventListener("mouseleave", () => {
@@ -154,21 +198,10 @@ function tooltipPlugin(chart) {
         const i = u.cursor.idx
         if (!hovering || i == null) return tip.classList.add("hidden")
 
-        const colors = chart.colors
-        const raw = chart.raw[i]
-        const step = u.data[0][i]
-        const rows = [el("div", "mb-0.5 text-base-content/60", `step ${step}`)]
-        if (raw == null && chart.nan && step >= chart.nan.first && step <= chart.nan.last) {
-          rows.push(el("div", "font-semibold", "NaN / Inf"))
-        } else if (chart.smoothing > 0) {
-          rows.push(row(u.data[2][i], "smoothed", colors.series), row(raw, "raw", colors.series, true))
-        } else {
-          rows.push(row(raw, "value", colors.series))
-        }
-        tip.replaceChildren(...rows)
+        tip.replaceChildren(el("div", "mb-0.5 text-base-content/60", `step ${u.data[0][i]}`), ...chart.tooltipRows(i))
         tip.classList.remove("hidden")
 
-        // Keep the tooltip inside the plot: flip to the left past the midpoint.
+        // Stay inside the plot: flip to the left past the midpoint.
         const left = u.cursor.left
         const flip = left > u.over.clientWidth / 2
         tip.style.left = flip ? "" : `${left + 12}px`
@@ -178,27 +211,29 @@ function tooltipPlugin(chart) {
   }
 }
 
+function valueRow(value, label, color, faint = false) {
+  const row = el("div", "flex items-center gap-2")
+  row.append(lineKey(color, faint), el("span", "font-semibold tabular-nums", value), el("span", "truncate text-base-content/60", label))
+  return row
+}
+
 export default {
   mounted() {
-    this.steps = []
-    this.series = {}
-    this.nan = {}
+    this.compare = this.el.dataset.mode === "compare"
+    this.runs = []
     this.charts = new Map()
+    this.expanded = new Set()
     this.filter = ""
+    this.view = "charts"
     this.smoothing = this.loadSmoothing()
 
     this.el.replaceChildren(el("p", "py-8 text-center text-sm text-base-content/60", "Loading metrics..."))
+    this.load()
 
-    this.pushEvent("load_metrics", {}, (reply) => {
-      this.steps = reply.steps
-      this.series = reply.series
-      this.nan = reply.nan
-      this.render()
-    })
+    this.handleEvent("metrics_append", ({ run, rows }) => this.append(run, rows))
+    this.handleEvent("metrics_reload", () => this.load())
 
-    this.handleEvent("metrics_append", ({ rows }) => this.append(rows))
-
-    // Charts draw on canvas, so they have to be rebuilt to pick up a theme change.
+    // Canvas colors have to be re-resolved when the theme changes.
     this.themeObserver = new MutationObserver(() => this.render())
     this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
   },
@@ -206,6 +241,13 @@ export default {
   destroyed() {
     this.themeObserver.disconnect()
     this.destroyCharts()
+  },
+
+  load() {
+    this.pushEvent("load_metrics", {}, ({ runs }) => {
+      this.runs = runs
+      this.render()
+    })
   },
 
   loadSmoothing() {
@@ -223,30 +265,37 @@ export default {
     } catch {}
   },
 
-  append(rows) {
+  metricKeys() {
+    return [...new Set(this.runs.flatMap((run) => Object.keys(run.series)))].sort()
+  },
+
+  append(runName, rows) {
+    const run = this.runs.find((r) => r.name === runName)
+    if (!run) return
+
     let newKeys = false
     for (const { step, values, nan } of rows) {
-      const index = this.steps.length
-      this.steps.push(step)
+      const index = run.steps.length
+      run.steps.push(step)
       for (const key of Object.keys(values)) {
-        if (!(key in this.series)) {
-          this.series[key] = new Array(index).fill(null)
-          newKeys = true
+        if (!(key in run.series)) {
+          run.series[key] = new Array(index).fill(null)
+          if (!this.charts.has(key)) newKeys = true
         }
       }
-      for (const key of Object.keys(this.series)) this.series[key].push(values[key] ?? null)
+      for (const key of Object.keys(run.series)) run.series[key].push(values[key] ?? null)
       for (const key of nan) {
-        const info = this.nan[key]
+        const info = run.nan[key]
         if (info) {
           info.last = step
           info.count++
         } else {
-          this.nan[key] = { first: step, last: step, count: 1 }
+          run.nan[key] = { first: step, last: step, count: 1 }
         }
       }
     }
 
-    if (newKeys || this.charts.size === 0) return this.render()
+    if (newKeys || this.view === "table" || this.charts.size === 0) return this.render()
     for (const chart of this.charts.values()) this.updateChart(chart)
   },
 
@@ -258,36 +307,19 @@ export default {
     this.charts.clear()
   },
 
-  // Rebuilds everything: the controls row and one card per metric.
+  // Rebuilds everything: the controls row, then the charts or the table.
   render() {
     this.destroyCharts()
-    const keys = Object.keys(this.series).sort()
+    const keys = this.metricKeys()
 
     if (keys.length === 0) {
-      this.el.replaceChildren(
-        el("p", "rounded-box border border-dashed border-base-300 py-8 text-center text-sm text-base-content/60", "No metrics logged yet."),
-      )
+      const message = this.compare && this.runs.length === 0 ? "Add runs to compare them." : "No metrics logged yet."
+      this.el.replaceChildren(el("p", "rounded-box border border-dashed border-base-300 py-8 text-center text-sm text-base-content/60", message))
       return
     }
 
-    const groups = new Map()
-    for (const key of keys) {
-      const [group] = splitKey(key)
-      if (!groups.has(group)) groups.set(group, [])
-      groups.get(group).push(key)
-    }
-
-    const sections = []
-    for (const [group, groupKeys] of groups) {
-      const grid = el("div", "grid gap-3 sm:grid-cols-2 xl:grid-cols-3")
-      const section = el("section", "space-y-2")
-      section.dataset.group = group
-      section.append(el("h3", "text-xs font-semibold uppercase tracking-wide text-base-content/60", group), grid)
-      sections.push(section)
-      for (const key of groupKeys) grid.appendChild(this.buildCard(key))
-    }
-
-    this.el.replaceChildren(this.buildControls(), ...sections)
+    const body = this.view === "table" ? this.buildTable(keys) : this.buildChartSections(keys)
+    this.el.replaceChildren(this.buildControls(), ...body)
     this.applyFilter()
   },
 
@@ -303,6 +335,19 @@ export default {
       this.filter = filter.value
       this.applyFilter()
     })
+
+    const views = el("div", "join")
+    for (const [view, label] of [["charts", "Charts"], ["table", "Table"]]) {
+      const button = el("button", `btn btn-xs join-item ${this.view === view ? "btn-active" : ""}`, label)
+      button.type = "button"
+      button.setAttribute("aria-pressed", String(this.view === view))
+      button.addEventListener("click", () => {
+        if (this.view === view) return
+        this.view = view
+        this.render()
+      })
+      views.append(button)
+    }
 
     const smoothingLabel = el("label", "flex items-center gap-2 text-xs text-base-content/70")
     const slider = el("input", "range range-xs w-32")
@@ -320,17 +365,39 @@ export default {
     })
     smoothingLabel.append("Smoothing", slider, smoothingValue)
 
-    const hint = el("span", "text-xs text-base-content/50", "Drag to zoom · double-click to reset")
-    row.append(filter, smoothingLabel, hint)
+    row.append(filter, views)
+    if (this.view === "charts") {
+      row.append(smoothingLabel, el("span", "text-xs text-base-content/50", "Drag to zoom · double-click to reset"))
+    }
     return row
   },
 
   applyFilter() {
     const query = this.filter.trim().toLowerCase()
-    for (const [key, chart] of this.charts) chart.card.hidden = query !== "" && !key.toLowerCase().includes(query)
+    const hide = (key) => query !== "" && !key.toLowerCase().includes(query)
+
+    for (const node of this.el.querySelectorAll("[data-metric]")) node.hidden = hide(node.dataset.metric)
     for (const section of this.el.querySelectorAll("section[data-group]")) {
-      section.hidden = [...section.querySelectorAll("[data-metric]")].every((card) => card.hidden)
+      section.hidden = [...section.querySelectorAll("[data-metric]")].every((node) => node.hidden)
     }
+  },
+
+  buildChartSections(keys) {
+    const groups = new Map()
+    for (const key of keys) {
+      const [group] = splitKey(key)
+      if (!groups.has(group)) groups.set(group, [])
+      groups.get(group).push(key)
+    }
+
+    return [...groups].map(([group, groupKeys]) => {
+      const grid = el("div", "grid gap-3 sm:grid-cols-2 xl:grid-cols-3")
+      const section = el("section", "mb-5 space-y-2")
+      section.dataset.group = group
+      section.append(el("h3", "text-xs font-semibold uppercase tracking-wide text-base-content/60", group), grid)
+      for (const key of groupKeys) grid.appendChild(this.buildCard(key))
+      return section
+    })
   },
 
   buildCard(key) {
@@ -338,31 +405,72 @@ export default {
     const card = el("div", "rounded-box border border-base-300 bg-base-100 p-3")
     card.dataset.metric = key
 
-    const header = el("div", "flex items-baseline justify-between gap-2")
+    const header = el("div", "flex items-center justify-between gap-2")
     const name = el("h4", "truncate text-xs font-medium text-base-content/70", title)
     name.title = key
+    const right = el("div", "flex shrink-0 items-center gap-1")
     const latest = el("span", "text-sm font-semibold")
-    header.append(name, latest)
+    const expand = el("button", "btn btn-ghost btn-xs btn-square text-base-content/60")
+    expand.type = "button"
+    right.append(latest, expand)
+    header.append(name, right)
 
-    const badge = el("div", "mt-1 hidden")
+    const badges = el("div", "mt-1 flex flex-wrap gap-1 empty:hidden")
     const plotEl = el("div", "relative mt-1")
-    card.append(header, badge, plotEl)
+    card.append(header, badges, plotEl)
 
-    const chart = { key, card, latest, badge, plotEl, colors: chromeColors(), raw: this.series[key], smoothing: this.smoothing, nan: null, nanBand: null }
+    const chart = { key, card, latest, badges, plotEl, expand, colors: chromeColors(), nanBand: null }
     chart.plot = this.createPlot(chart)
-    chart.resizeObserver = new ResizeObserver(() => {
-      const width = plotEl.clientWidth
-      if (width > 0 && width !== chart.plot.width) chart.plot.setSize({ width, height: CHART_HEIGHT })
-    })
+    chart.resizeObserver = new ResizeObserver(() => this.resize(chart))
     chart.resizeObserver.observe(plotEl)
+    expand.addEventListener("click", () => this.toggleExpanded(chart))
 
     this.charts.set(key, chart)
+    this.applyExpanded(chart)
     this.updateChart(chart)
     return card
   },
 
+  toggleExpanded(chart) {
+    if (this.expanded.has(chart.key)) this.expanded.delete(chart.key)
+    else this.expanded.add(chart.key)
+    this.applyExpanded(chart)
+    this.resize(chart)
+    chart.card.scrollIntoView({ block: "nearest", behavior: "smooth" })
+  },
+
+  applyExpanded(chart) {
+    const expanded = this.expanded.has(chart.key)
+    chart.card.classList.toggle("col-span-full", expanded)
+    chart.expand.setAttribute("aria-pressed", String(expanded))
+    chart.expand.setAttribute("aria-label", expanded ? "Collapse chart" : "Expand chart")
+    chart.expand.title = expanded ? "Collapse" : "Expand"
+    chart.expand.replaceChildren(icon(expanded ? "hero-arrows-pointing-in-micro" : "hero-arrows-pointing-out-micro"))
+  },
+
+  resize(chart) {
+    const width = chart.plotEl.clientWidth
+    const height = this.expanded.has(chart.key) ? EXPANDED_HEIGHT : CHART_HEIGHT
+    if (width > 0 && (width !== chart.plot.width || height !== chart.plot.height)) {
+      chart.plot.setSize({ width, height })
+    }
+  },
+
+  // uPlot series layout. Single: [x, raw (faint), smoothed]. Compare: [x, one
+  // smoothed line per run].
+  seriesSpec() {
+    if (!this.compare) {
+      const color = seriesColor(0)
+      return [
+        { label: "raw", stroke: color + "40", width: 1, points: { show: false } },
+        { label: "value", stroke: color, width: 2, points: { show: false } },
+      ]
+    }
+    return this.runs.map((run) => ({ label: run.name, stroke: seriesColor(run.slot), width: 2, points: { show: false } }))
+  },
+
   createPlot(chart) {
-    const { axis, grid, series, seriesFaint, surface } = chart.colors
+    const { axis, grid, surface } = chart.colors
     const axisStyle = {
       stroke: axis,
       font: "11px system-ui, sans-serif",
@@ -370,17 +478,19 @@ export default {
       ticks: { show: false },
     }
 
+    const series = [{ label: "step" }, ...this.seriesSpec()]
+
     return new uPlot(
       {
         width: Math.max(chart.plotEl.clientWidth, 200),
-        height: CHART_HEIGHT,
+        height: this.expanded.has(chart.key) ? EXPANDED_HEIGHT : CHART_HEIGHT,
         legend: { show: false },
         cursor: {
           // Crosshair and zoom follow the pointer across every chart.
           sync: { key: SYNC_KEY, setSeries: false, scales: ["x", null] },
           y: false,
-          // 8px marker with a 2px surface ring so it stays legible on the line.
-          points: { size: 12, width: 2, fill: series, stroke: surface },
+          // 8px markers with a 2px surface ring so they stay legible on lines.
+          points: { size: 12, width: 2, stroke: surface },
           drag: { x: true, y: false },
         },
         scales: { x: { time: false } },
@@ -388,46 +498,117 @@ export default {
           { ...axisStyle, size: 28, values: (u, splits) => splits.map(formatStep) },
           { ...axisStyle, size: 52, values: (u, splits) => splits.map(formatValue) },
         ],
-        series: [
-          { label: "step" },
-          { label: "raw", stroke: seriesFaint, width: 1, points: { show: false } },
-          { label: "value", stroke: series, width: 2, points: { show: false } },
-        ],
+        series,
         plugins: [nanBandPlugin(chart), tooltipPlugin(chart)],
       },
-      [[], [], []],
+      series.map(() => []),
       chart.plotEl,
     )
   },
 
   updateChart(chart) {
-    const raw = this.series[chart.key]
-    chart.raw = raw
-    chart.smoothing = this.smoothing
-    chart.nan = this.nan[chart.key] ?? null
-    const summary = chart.nan && nanSummary(chart.nan, this.steps)
-    chart.nanBand = summary?.diverged ? { from: chart.nan.first, to: this.steps[this.steps.length - 1] } : null
-
+    const { x, ys } = align(this.runs, chart.key)
     const plot = chart.plot
-    const lastStepShown = plot.scales.x.max
-    const previousLastStep = plot.data[0].length ? plot.data[0][plot.data[0].length - 1] : null
+
+    const previousLastStep = plot.data?.[0]?.length ? plot.data[0][plot.data[0].length - 1] : null
     // Keep the user's zoom when new data arrives; otherwise follow the data.
-    const zoomed = previousLastStep != null && lastStepShown != null && lastStepShown < previousLastStep
+    const zoomed = previousLastStep != null && plot.scales.x.max != null && plot.scales.x.max < previousLastStep
 
-    const hidden = new Array(raw.length).fill(null)
-    plot.setData([this.steps, this.smoothing > 0 ? raw : hidden, smooth(raw, this.smoothing)], !zoomed)
+    const summaries = this.runs.map((run) => (run.nan[chart.key] ? nanSummary(run.nan[chart.key], run.steps) : null))
 
-    // A diverged metric's current value is NaN, not its last finite value.
-    chart.latest.textContent = summary?.diverged ? "NaN" : formatValue(lastValue(raw))
+    if (this.compare) {
+      const smoothed = ys.map((values) => smooth(values, this.smoothing))
+      plot.setData([x, ...smoothed], !zoomed)
 
-    if (summary) {
-      // Solid critical fill with white text: clears contrast on both themes
-      // and says what happened in words, not only color.
-      const pill = el("span", "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white")
-      pill.style.background = CRITICAL
-      pill.append(el("span", "hero-exclamation-triangle-micro size-3.5"), summary.label)
-      chart.badge.replaceChildren(pill)
-      chart.badge.classList.remove("hidden")
+      chart.tooltipRows = (i) =>
+        this.runs.map((run, r) => valueRow(formatValue(smoothed[r][i]), run.name, seriesColor(run.slot)))
+      chart.latest.textContent = ""
+    } else {
+      const raw = ys[0] ?? []
+      const summary = summaries[0]
+      const nan = this.runs[0]?.nan[chart.key]
+      chart.nanBand = summary?.diverged ? { from: nan.first, to: x[x.length - 1] } : null
+
+      const smoothed = smooth(raw, this.smoothing)
+      plot.setData([x, this.smoothing > 0 ? raw : new Array(raw.length).fill(null), smoothed], !zoomed)
+
+      const color = seriesColor(0)
+      chart.tooltipRows = (i) => {
+        if (raw[i] == null && nan && x[i] >= nan.first && x[i] <= nan.last) return [el("div", "font-semibold", "NaN / Inf")]
+        if (this.smoothing > 0) {
+          return [valueRow(formatValue(smoothed[i]), "smoothed", color), valueRow(formatValue(raw[i]), "raw", color, true)]
+        }
+        return [valueRow(formatValue(raw[i]), "value", color)]
+      }
+      // A diverged metric's current value is NaN, not its last finite value.
+      chart.latest.textContent = summary?.diverged ? "NaN" : formatValue(lastValue(raw))
     }
+
+    // NaN badges: solid critical fill with white text clears contrast on both
+    // themes and says what happened in words, not only color.
+    chart.badges.replaceChildren(
+      ...summaries.flatMap((summary, r) => {
+        if (!summary) return []
+        const pill = el("span", "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white")
+        pill.style.background = CRITICAL
+        const label = this.compare ? `${this.runs[r].name}: ${summary.label}` : summary.label
+        pill.append(icon("hero-exclamation-triangle-micro", "size-3.5 shrink-0"), el("span", "truncate", label))
+        pill.title = label
+        return [pill]
+      }),
+    )
+  },
+
+  // The table view: every value the charts show the end of, readable without
+  // hovering. Single run: last/min/max per metric. Compare: last value per run.
+  buildTable(keys) {
+    const table = el("table", "table table-sm")
+    const head = el("tr")
+    head.append(el("th", "", "Metric"))
+
+    if (this.compare) {
+      for (const run of this.runs) {
+        const th = el("th", "text-right")
+        const label = el("span", "inline-flex items-center justify-end gap-1.5")
+        label.append(lineKey(seriesColor(run.slot)), el("span", "font-mono font-normal", run.name))
+        th.append(label)
+        head.append(th)
+      }
+    } else {
+      for (const label of ["Last", "Min", "Max"]) head.append(el("th", "text-right", label))
+    }
+
+    const body = el("tbody")
+    for (const key of keys) {
+      const row = el("tr")
+      row.dataset.metric = key
+      row.append(el("td", "font-mono text-xs", key))
+
+      const cells = this.compare
+        ? this.runs.map((run) => this.lastCell(run, key))
+        : (() => {
+            const values = this.runs[0].series[key] ?? []
+            const [min, max] = extent(values)
+            return [this.lastCell(this.runs[0], key), formatValue(min), formatValue(max)]
+          })()
+
+      for (const cell of cells) row.append(el("td", "text-right tabular-nums", cell))
+      body.append(row)
+    }
+
+    const thead = el("thead")
+    thead.append(head)
+    table.append(thead, body)
+    const wrapper = el("div", "overflow-x-auto rounded-box border border-base-300 bg-base-100")
+    wrapper.append(table)
+    return [wrapper]
+  },
+
+  lastCell(run, key) {
+    const values = run.series[key]
+    if (!values) return "—"
+    const nan = run.nan[key]
+    if (nan && nanSummary(nan, run.steps).diverged) return "NaN"
+    return formatValue(lastValue(values))
   },
 }
