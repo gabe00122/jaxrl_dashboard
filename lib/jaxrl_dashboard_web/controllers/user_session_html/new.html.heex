@@ -1,0 +1,43 @@
+<main class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-sm">
+    <div class="mb-8 text-center">
+      <div class="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
+        <.icon name="hero-cpu-chip" class="size-6 text-primary" /> jaxrl dashboard
+      </div>
+      <p class="mt-1 text-sm text-base-content/60">Sign in to manage training runs</p>
+    </div>
+
+    <.form
+      for={@form}
+      id="login_form"
+      action={~p"/log-in"}
+      class="rounded-box border border-base-300 bg-base-200/50 p-6 shadow-sm"
+    >
+      <.input
+        field={@form[:username]}
+        type="text"
+        label="Username"
+        autocomplete="username"
+        spellcheck="false"
+        autofocus
+        required
+      />
+      <.input
+        field={@form[:password]}
+        type="password"
+        label="Password"
+        autocomplete="current-password"
+        spellcheck="false"
+        required
+      />
+      <.input field={@form[:remember_me]} type="checkbox" label="Keep me logged in for 14 days" />
+      <.button class="btn btn-primary w-full mt-2">Log in</.button>
+    </.form>
+
+    <p class="mt-6 text-center text-xs text-base-content/50">
+      No account? Ask the server admin for one.
+    </p>
+  </div>
+</main>
+
+<Layouts.flash_group flash={@flash} />
