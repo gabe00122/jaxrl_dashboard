@@ -41,6 +41,17 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
+  if jaxrl_dir = System.get_env("JAXRL_DIR") do
+    config :jaxrl_dashboard, :runs,
+      project_dir: jaxrl_dir,
+      config_dir: Path.join(jaxrl_dir, "config"),
+      results_dir: Path.join(jaxrl_dir, "results")
+  end
+
+  if data_dir = System.get_env("RUNS_DATA_DIR") do
+    config :jaxrl_dashboard, :runs, data_dir: data_dir
+  end
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

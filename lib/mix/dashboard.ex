@@ -3,10 +3,18 @@ defmodule Mix.Dashboard do
   # Shared helpers for the `mix dashboard.*` user management tasks.
 
   @doc """
-  Starts the app with logging turned down, so debug query logs (which would
-  include password hashes) don't end up in the terminal.
+  Starts the app without the job scheduler, and with logging turned down so
+  debug query logs (which would include password hashes) don't end up in the
+  terminal.
   """
   def start_app do
+    Mix.Task.run("app.config")
+
+    # The running server owns the job queue; a short-lived task mustn't start
+    # a second scheduler that could launch runs.
+    runs = Application.fetch_env!(:jaxrl_dashboard, :runs)
+    Application.put_env(:jaxrl_dashboard, :runs, Keyword.put(runs, :start_scheduler, false))
+
     Mix.Task.run("app.start")
     Logger.configure(level: :error)
   end

@@ -35,3 +35,6 @@ jaxrl_dashboard-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Per-run files written by the job runner (logs, pids, exit codes).
+/var/

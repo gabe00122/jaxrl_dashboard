@@ -33,7 +33,8 @@ defmodule JaxrlDashboardWeb.Router do
 
     live_session :require_authenticated_user,
       on_mount: [{JaxrlDashboardWeb.UserAuth, :require_authenticated}] do
-      live "/", HomeLive, :index
+      live "/", RunLive.Index, :index
+      live "/runs/:name", RunLive.Show, :show
     end
   end
 

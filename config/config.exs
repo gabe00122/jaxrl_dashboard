@@ -11,6 +11,26 @@ config :jaxrl_dashboard,
   ecto_repos: [JaxrlDashboard.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Where the jaxrl project lives and how training runs are launched.
+# `train_command` is resolved relative to `project_dir`; the dashboard appends
+# `--config`, `--base-dir` and `--name`. Calling the venv directly (rather
+# than `uv run`) avoids uv re-syncing the environment and dropping the CUDA extra.
+jaxrl_dir = Path.expand("../../jaxrl", __DIR__)
+
+config :jaxrl_dashboard, :runs,
+  project_dir: jaxrl_dir,
+  config_dir: Path.join(jaxrl_dir, "config"),
+  results_dir: Path.join(jaxrl_dir, "results"),
+  # Dashboard-owned per-run files: input config, output log, pid, exit code.
+  data_dir: Path.expand("../var/runs", __DIR__),
+  train_command: [".venv/bin/pmarl", "train"],
+  # One GPU, so one training run at a time.
+  max_concurrent: 1,
+  poll_interval: 1_000,
+  # How long a cancelled run gets to exit after SIGTERM before SIGKILL.
+  kill_grace_period: 30_000,
+  start_scheduler: true
+
 # Configure the endpoint
 config :jaxrl_dashboard, JaxrlDashboardWeb.Endpoint,
   url: [host: "localhost"],
