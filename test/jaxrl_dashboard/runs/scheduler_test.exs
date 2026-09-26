@@ -36,7 +36,7 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
     assert run.exit_code == 0
     assert is_integer(run.pid)
     assert run.finished_at
-    assert Launcher.read_output_tail(run) =~ "training #{run.name} from"
+    assert File.read!(Settings.output_path(run.name)) =~ "training #{run.name} from"
     # jaxrl writes its results into the results dir under the run's name.
     assert File.exists?(Path.join(Settings.experiment_dir(run.name), "logs.jsonl"))
   end

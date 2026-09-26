@@ -27,6 +27,7 @@ config :jaxrl_dashboard, JaxrlDashboardWeb.Endpoint,
 config :jaxrl_dashboard, :runs,
   train_command: ["bash", Path.expand("../test/support/fake_train.sh", __DIR__)],
   poll_interval: 20,
+  watch_interval: 20,
   kill_grace_period: 2_000,
   start_scheduler: false
 

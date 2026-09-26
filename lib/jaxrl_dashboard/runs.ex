@@ -17,6 +17,16 @@ defmodule JaxrlDashboard.Runs do
 
   def subscribe, do: Phoenix.PubSub.subscribe(JaxrlDashboard.PubSub, @topic)
 
+  @doc """
+  Topic for one run's live data: metrics rows and output lines, broadcast by
+  `JaxrlDashboard.Runs.Watcher`.
+  """
+  def run_topic(name), do: "run:" <> name
+  def subscribe_run(name), do: Phoenix.PubSub.subscribe(JaxrlDashboard.PubSub, run_topic(name))
+
+  def broadcast_run(name, message),
+    do: Phoenix.PubSub.broadcast(JaxrlDashboard.PubSub, run_topic(name), message)
+
   defp broadcast({:ok, run}, event) do
     run = Repo.preload(run, :user)
     Phoenix.PubSub.broadcast(JaxrlDashboard.PubSub, @topic, {event, run})
@@ -113,6 +123,97 @@ defmodule JaxrlDashboard.Runs do
 
   def cancel_run(%Run{status: :running} = run), do: {:ok, run}
   def cancel_run(%Run{}), do: {:error, :already_finished}
+
+  ## Importing runs trained outside the dashboard
+
+  @doc """
+  Adds a run for every directory in the jaxrl results dir that has a
+  `config.json` and isn't known yet. Safe to run repeatedly.
+
+  Returns `{imported_names, skipped}` where `skipped` lists
+  `{name, reason}` for directories that couldn't be imported.
+  """
+  def import_existing_runs do
+    known = MapSet.new(Repo.all(from r in Run, select: r.name))
+    results_dir = Settings.results_dir()
+
+    results_dir
+    |> File.ls()
+    |> case do
+      {:ok, entries} -> Enum.sort(entries)
+      {:error, _} -> []
+    end
+    |> Enum.reject(&MapSet.member?(known, &1))
+    |> Enum.filter(&File.regular?(Path.join([results_dir, &1, "config.json"])))
+    |> Enum.reduce({[], []}, fn name, {imported, skipped} ->
+      case import_run(name) do
+        {:ok, run} ->
+          broadcast({:ok, run}, :run_created)
+          {[name | imported], skipped}
+
+        {:error, reason} ->
+          {imported, [{name, reason} | skipped]}
+      end
+    end)
+    |> then(fn {imported, skipped} -> {Enum.reverse(imported), Enum.reverse(skipped)} end)
+  end
+
+  defp import_run(name) do
+    dir = Settings.experiment_dir(name)
+
+    with {:ok, config} <- read_json(Path.join(dir, "config.json")) do
+      meta =
+        case read_json(Path.join(dir, "meta.json")) do
+          {:ok, meta} -> meta
+          {:error, _} -> %{}
+        end
+
+      started_at = parse_datetime(meta["start_time"])
+
+      attrs = %{
+        name: name,
+        config: config,
+        config_source: meta["config_file"] && Path.basename(meta["config_file"]),
+        started_at: started_at,
+        # The last write to the metrics log is the best guess at when it ended.
+        finished_at: file_mtime(Path.join(dir, "logs.jsonl")),
+        # Sort imported runs by when they ran rather than when they were imported.
+        inserted_at: started_at
+      }
+
+      case Repo.insert(Run.import_changeset(%Run{}, attrs)) do
+        {:ok, run} -> {:ok, run}
+        {:error, changeset} -> {:error, inspect(changeset.errors)}
+      end
+    end
+  end
+
+  defp read_json(path) do
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{} = map} <- Jason.decode(contents) do
+      {:ok, map}
+    else
+      {:ok, _} -> {:error, "#{Path.basename(path)} is not a JSON object"}
+      {:error, %Jason.DecodeError{}} -> {:error, "#{Path.basename(path)} is not valid JSON"}
+      {:error, reason} -> {:error, "#{Path.basename(path)}: #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_datetime(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> DateTime.truncate(datetime, :second)
+      _ -> nil
+    end
+  end
+
+  defp parse_datetime(_), do: nil
+
+  defp file_mtime(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %{mtime: mtime}} -> DateTime.from_unix!(mtime)
+      {:error, _} -> nil
+    end
+  end
 
   ## Used by the scheduler
 

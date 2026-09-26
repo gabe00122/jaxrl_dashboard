@@ -102,4 +102,64 @@ defmodule JaxrlDashboard.RunsTest do
     assert Runs.claim_next_queued_run().id == second.id
     assert Runs.claim_next_queued_run() == nil
   end
+
+  describe "import_existing_runs/0" do
+    defp make_result_dir(name, files) do
+      dir = Settings.experiment_dir(name)
+      File.mkdir_p!(dir)
+      for {file, contents} <- files, do: File.write!(Path.join(dir, file), contents)
+      dir
+    end
+
+    test "imports runs from the results dir with their config and timing" do
+      dir =
+        make_result_dir("old-run", %{
+          "config.json" => ~s({"seed": 3}),
+          "meta.json" =>
+            ~s({"config_file": "./config/return.json", "start_time": "2026-07-19T22:51:46.728641Z", "git_hash": "abc"}),
+          "logs.jsonl" => ~s({"step": 0}\n)
+        })
+
+      File.touch!(Path.join(dir, "logs.jsonl"), 1_784_600_000)
+      Runs.subscribe()
+
+      assert {["old-run"], []} = Runs.import_existing_runs()
+
+      run = Runs.get_run_by_name!("old-run")
+      assert run.status == :imported
+      assert run.config == %{"seed" => 3}
+      assert run.config_source == "return.json"
+      assert run.started_at == ~U[2026-07-19 22:51:46Z]
+      assert run.inserted_at == ~U[2026-07-19 22:51:46Z]
+      assert run.finished_at == DateTime.from_unix!(1_784_600_000)
+      assert run.user_id == nil
+      assert_receive {:run_created, %Run{name: "old-run"}}
+    end
+
+    test "is idempotent and skips things that aren't runs", %{scope: scope} do
+      make_result_dir("run-a", %{"config.json" => "{}"})
+      make_result_dir("no-config", %{"logs.jsonl" => ""})
+      make_result_dir("Bad Name", %{"config.json" => "{}"})
+      make_result_dir("broken", %{"config.json" => "{nope"})
+      File.write!(Path.join(Settings.results_dir(), "README.md"), "hi")
+
+      # A dashboard run's results dir must not be imported a second time.
+      write_config("a.json")
+      {:ok, _} = Runs.enqueue_run(scope, %{"config_source" => "a.json", "name" => "mine"})
+      make_result_dir("mine", %{"config.json" => "{}"})
+
+      assert {["run-a"], skipped} = Runs.import_existing_runs()
+      assert [{"Bad Name", _}, {"broken", "config.json is not valid JSON"}] = skipped
+
+      assert {[], _} = Runs.import_existing_runs()
+    end
+
+    test "imported runs can't be cancelled and aren't scheduled" do
+      make_result_dir("done", %{"config.json" => "{}"})
+      Runs.import_existing_runs()
+
+      assert Runs.cancel_run(Runs.get_run_by_name!("done")) == {:error, :already_finished}
+      assert Runs.claim_next_queued_run() == nil
+    end
+  end
 end

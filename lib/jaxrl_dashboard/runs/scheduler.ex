@@ -7,6 +7,7 @@ defmodule JaxrlDashboard.Runs.Scheduler do
     1. checks each `:running` run's process: finished runs get their final
        status from the exit code, and cancelled runs are signalled
     2. starts queued runs while fewer than `max_concurrent` are running
+    3. starts or stops `JaxrlDashboard.Runs.Watcher`s to match the running runs
 
   All state lives in the database and the runs' job directories, so a
   restarted scheduler simply picks up where the last one left off, including
@@ -17,7 +18,7 @@ defmodule JaxrlDashboard.Runs.Scheduler do
   require Logger
 
   alias JaxrlDashboard.Runs
-  alias JaxrlDashboard.Runs.{Launcher, Run, Settings}
+  alias JaxrlDashboard.Runs.{Launcher, Run, Settings, Watcher}
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -42,6 +43,7 @@ defmodule JaxrlDashboard.Runs.Scheduler do
 
     state = check_running_runs(state)
     start_queued_runs()
+    Watcher.reconcile(for run <- Runs.list_running_runs(), run.pid, do: run.name)
 
     {:noreply, %{state | timer: Process.send_after(self(), :tick, Settings.get(:poll_interval))}}
   end

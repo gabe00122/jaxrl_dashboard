@@ -13,7 +13,9 @@ defmodule JaxrlDashboard.Application do
         JaxrlDashboard.Repo,
         {DNSCluster, query: Application.get_env(:jaxrl_dashboard, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: JaxrlDashboard.PubSub},
-        JaxrlDashboard.RateLimiter
+        JaxrlDashboard.RateLimiter,
+        {Registry, keys: :unique, name: JaxrlDashboard.Runs.WatcherRegistry},
+        {DynamicSupervisor, name: JaxrlDashboard.Runs.WatcherSupervisor, strategy: :one_for_one}
       ] ++
         scheduler() ++
         [

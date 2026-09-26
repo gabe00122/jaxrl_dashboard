@@ -14,6 +14,9 @@ defmodule JaxrlDashboard.Runs.Settings do
   @doc "The dashboard's own directory for one run's files."
   def job_dir(run_name), do: Path.join(data_dir(), run_name)
 
+  @doc "The run's combined stdout/stderr, written by `run_job.sh`."
+  def output_path(run_name), do: Path.join(job_dir(run_name), "output.log")
+
   @doc "Directory jaxrl writes the run's results to (`logs.jsonl`, checkpoints)."
   def experiment_dir(run_name), do: Path.join(results_dir(), run_name)
 

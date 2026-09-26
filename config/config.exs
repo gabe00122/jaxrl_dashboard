@@ -27,6 +27,8 @@ config :jaxrl_dashboard, :runs,
   # One GPU, so one training run at a time.
   max_concurrent: 1,
   poll_interval: 1_000,
+  # How often a running run's logs.jsonl and output.log are checked for new lines.
+  watch_interval: 1_000,
   # How long a cancelled run gets to exit after SIGTERM before SIGKILL.
   kill_grace_period: 30_000,
   start_scheduler: true

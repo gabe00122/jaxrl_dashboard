@@ -4,8 +4,9 @@ defmodule JaxrlDashboard.Runs.Run do
 
   alias JaxrlDashboard.Runs.Settings
 
-  @statuses [:queued, :running, :succeeded, :failed, :cancelled, :lost]
-  @finished [:succeeded, :failed, :cancelled, :lost]
+  # :imported runs were trained outside the dashboard and found in results/.
+  @statuses [:queued, :running, :succeeded, :failed, :cancelled, :lost, :imported]
+  @finished [:succeeded, :failed, :cancelled, :lost, :imported]
 
   schema "runs" do
     field :name, :string
@@ -76,13 +77,30 @@ defmodule JaxrlDashboard.Runs.Run do
     "#{stem}-#{String.slice(suffix, 0, 4)}"
   end
 
-  defp validate_name(changeset) do
+  @doc """
+  Changeset for a run found in the jaxrl results directory.
+  """
+  def import_changeset(run, attrs) do
+    run
+    |> cast(attrs, [:name, :config, :config_source, :started_at, :finished_at, :inserted_at])
+    |> validate_required([:name, :config])
+    |> put_change(:status, :imported)
+    |> validate_name_format()
+    |> unique_constraint(:name)
+  end
+
+  # The name becomes a directory name and a CLI argument, so keep it boring.
+  defp validate_name_format(changeset) do
     changeset
     |> validate_length(:name, max: 64)
-    # The name becomes a directory name and a CLI argument, so keep it boring.
     |> validate_format(:name, ~r/^[a-z0-9][a-z0-9_-]*$/,
       message: "use lowercase letters, digits, dashes and underscores"
     )
+  end
+
+  defp validate_name(changeset) do
+    changeset
+    |> validate_name_format()
     |> validate_change(:name, fn :name, name ->
       if File.exists?(Settings.experiment_dir(name)),
         do: [name: "already exists in the jaxrl results directory"],

@@ -3,10 +3,8 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
 
   import JaxrlDashboardWeb.RunComponents
 
-  alias JaxrlDashboard.Runs
-  alias JaxrlDashboard.Runs.{Launcher, Run, Settings}
-
-  @output_refresh_interval 1_000
+  alias JaxrlDashboard.{Metrics, Runs}
+  alias JaxrlDashboard.Runs.{LogFile, Run, Settings}
 
   @impl true
   def render(assigns) do
@@ -54,10 +52,48 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
       </dl>
 
       <section>
-        <h2 class="mb-2 text-sm font-semibold">Output</h2>
+        <div class="mb-2 flex items-baseline justify-between gap-4">
+          <h2 class="text-sm font-semibold">Metrics</h2>
+          <.link
+            href={~p"/runs/#{@run.name}/files/logs.jsonl"}
+            class="text-xs text-base-content/60 hover:text-base-content"
+          >
+            <.icon name="hero-arrow-down-tray-micro" class="size-3.5" /> logs.jsonl
+          </.link>
+        </div>
+        <%!-- Rendered client-side by assets/js/hooks/metrics_charts.js --%>
+        <div id="metrics" phx-hook="MetricsCharts" phx-update="ignore"></div>
+      </section>
+
+      <section>
+        <div class="mb-2 flex items-baseline justify-between gap-4">
+          <h2 class="text-sm font-semibold">Output</h2>
+          <.link
+            :if={!@output_empty?}
+            href={~p"/runs/#{@run.name}/files/output.log"}
+            class="text-xs text-base-content/60 hover:text-base-content"
+          >
+            <.icon name="hero-arrow-down-tray-micro" class="size-3.5" /> output.log
+          </.link>
+        </div>
         <%!-- column-reverse keeps the view pinned to the newest output --%>
-        <div class="flex max-h-[32rem] flex-col-reverse overflow-auto rounded-box bg-neutral p-4 text-neutral-content">
-          <pre id="run-output" class="whitespace-pre-wrap break-all font-mono text-xs leading-relaxed">{output_or_placeholder(@output, @run)}</pre>
+        <div class="flex max-h-[28rem] flex-col-reverse overflow-auto rounded-box bg-neutral p-4 text-neutral-content">
+          <div
+            id="run-output"
+            phx-update="stream"
+            class="font-mono text-xs leading-relaxed"
+          >
+            <div
+              :for={{dom_id, line} <- @streams.output}
+              id={dom_id}
+              class="min-h-[1.625em] whitespace-pre-wrap break-all"
+            >
+              {line.text}
+            </div>
+          </div>
+          <p :if={@output_empty?} id="run-output-empty" class="font-mono text-xs opacity-70">
+            {if @run.status == :queued, do: "Waiting in the queue...", else: "No output."}
+          </p>
         </div>
       </section>
 
@@ -81,9 +117,9 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     """
   end
 
-  defp output_or_placeholder("", %Run{status: :queued}), do: "Waiting in the queue..."
-  defp output_or_placeholder("", _run), do: "No output."
-  defp output_or_placeholder(output, _run), do: output
+  # Output lines kept on the page; older ones are dropped from the DOM.
+  @max_output_lines 1_000
+  @output_tail_bytes 64 * 1024
 
   @impl true
   def mount(%{"name" => name}, _session, socket) do
@@ -91,17 +127,28 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
 
     if connected?(socket) do
       Runs.subscribe()
-      schedule_output_refresh(run)
+      Runs.subscribe_run(name)
     end
 
+    {lines, output_offset} =
+      LogFile.read_tail_lines(Settings.output_path(name), @output_tail_bytes)
+
     {:ok,
-     assign(socket,
+     socket
+     |> assign(
        page_title: run.name,
        run: run,
-       output: Launcher.read_output_tail(run),
-       experiment_dir: Settings.experiment_dir(run.name)
-     )}
+       experiment_dir: Settings.experiment_dir(run.name),
+       output_offset: output_offset,
+       output_empty?: lines == [],
+       # Last metrics step sent to the chart hook; nil until it loads.
+       metrics_last_step: nil
+     )
+     |> stream_configure(:output, dom_id: &"output-#{&1.offset}")
+     |> stream(:output, Enum.map(lines, &output_item/1), limit: -@max_output_lines)}
   end
+
+  defp output_item({offset, text}), do: %{offset: offset, text: text}
 
   @impl true
   def handle_event("cancel", _params, socket) do
@@ -114,13 +161,15 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     end
   end
 
+  # The chart hook asks for the full history once it's mounted; after that it
+  # gets appended rows pushed as "metrics_append".
+  def handle_event("load_metrics", _params, socket) do
+    metrics = Metrics.load(socket.assigns.run.name)
+    {:reply, metrics, assign(socket, metrics_last_step: List.last(metrics.steps, -1))}
+  end
+
   @impl true
   def handle_info({:run_updated, %Run{id: id} = run}, %{assigns: %{run: %Run{id: id}}} = socket) do
-    # Pick up the last lines once the run ends, and start polling when it starts.
-    if Run.finished?(run) or socket.assigns.run.status == :queued do
-      send(self(), :refresh_output)
-    end
-
     {:noreply, assign(socket, run: run)}
   end
 
@@ -128,16 +177,42 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     {:noreply, socket}
   end
 
-  def handle_info(:refresh_output, socket) do
-    run = socket.assigns.run
-    schedule_output_refresh(run)
-    {:noreply, assign(socket, output: Launcher.read_output_tail(run))}
+  # Before the hook has loaded, rows are skipped: its load reads the file,
+  # which already has them.
+  def handle_info({:metrics, _name, _rows}, %{assigns: %{metrics_last_step: nil}} = socket) do
+    {:noreply, socket}
   end
 
-  # Polls the log file while the run is live. Moves to a shared tailer
-  # process along with the metrics.
-  defp schedule_output_refresh(%Run{status: :running}),
-    do: Process.send_after(self(), :refresh_output, @output_refresh_interval)
+  def handle_info({:metrics, _name, rows}, socket) do
+    last_step = socket.assigns.metrics_last_step
 
-  defp schedule_output_refresh(_run), do: :ok
+    case Enum.filter(rows, &(&1.step > last_step)) do
+      [] ->
+        {:noreply, socket}
+
+      new_rows ->
+        {:noreply,
+         socket
+         |> push_event("metrics_append", %{rows: new_rows})
+         |> assign(metrics_last_step: List.last(new_rows).step)}
+    end
+  end
+
+  def handle_info({:output, _name, lines}, socket) do
+    case Enum.filter(lines, fn {offset, _} -> offset >= socket.assigns.output_offset end) do
+      [] ->
+        {:noreply, socket}
+
+      new_lines ->
+        {offset, text} = List.last(new_lines)
+
+        socket =
+          Enum.reduce(new_lines, socket, fn line, socket ->
+            stream_insert(socket, :output, output_item(line), limit: -@max_output_lines)
+          end)
+
+        {:noreply,
+         assign(socket, output_offset: offset + byte_size(text) + 1, output_empty?: false)}
+    end
+  end
 end

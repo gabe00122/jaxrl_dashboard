@@ -26,6 +26,7 @@ defmodule JaxrlDashboard.RunsFixtures do
     Application.put_env(:jaxrl_dashboard, :runs, Keyword.merge(original, dirs))
 
     on_exit(fn ->
+      Enum.each(JaxrlDashboard.Runs.Watcher.watched_names(), &JaxrlDashboard.Runs.Watcher.stop/1)
       Application.put_env(:jaxrl_dashboard, :runs, original)
       File.rm_rf!(root)
     end)

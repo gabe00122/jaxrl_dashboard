@@ -41,6 +41,7 @@ defmodule JaxrlDashboardWeb.RunComponents do
       :failed -> "bg-error/15 text-error"
       :lost -> "bg-error/15 text-error"
       :cancelled -> "bg-base-300 text-base-content/50 line-through"
+      :imported -> "border border-base-300 text-base-content/60"
     end
   end
 
@@ -82,7 +83,7 @@ defmodule JaxrlDashboardWeb.RunComponents do
 
   def duration(%{run: %Run{started_at: nil}} = assigns), do: dash(assigns)
 
-  def duration(%{run: %Run{finished_at: nil}} = assigns) do
+  def duration(%{run: %Run{status: :running}} = assigns) do
     ~H"""
     <script :type={Phoenix.LiveView.ColocatedHook} name=".Elapsed">
       const format = (s) => {
@@ -108,6 +109,9 @@ defmodule JaxrlDashboardWeb.RunComponents do
     </span>
     """
   end
+
+  # Imported runs that never logged anything have no end time.
+  def duration(%{run: %Run{finished_at: nil}} = assigns), do: dash(assigns)
 
   def duration(assigns) do
     ~H"""

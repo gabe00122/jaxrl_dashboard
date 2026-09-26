@@ -111,39 +111,5 @@ defmodule JaxrlDashboard.Runs.Launcher do
     :ok
   end
 
-  @doc """
-  Returns up to the last `max_bytes` of the run's output, starting at a line
-  boundary.
-  """
-  def read_output_tail(%Run{name: name}, max_bytes \\ 64 * 1024) do
-    path = Path.join(Settings.job_dir(name), "output.log")
-
-    with {:ok, %{size: size}} <- File.stat(path),
-         {:ok, file} <- File.open(path, [:read, :binary]) do
-      offset = max(size - max_bytes, 0)
-
-      data =
-        try do
-          case :file.pread(file, offset, max_bytes) do
-            {:ok, data} -> data
-            _ -> ""
-          end
-        after
-          File.close(file)
-        end
-
-      if offset > 0, do: drop_partial_line(data), else: data
-    else
-      _ -> ""
-    end
-  end
-
-  defp drop_partial_line(data) do
-    case :binary.split(data, "\n") do
-      [_partial, rest] -> rest
-      [_] -> data
-    end
-  end
-
   defp wrapper_path, do: Application.app_dir(:jaxrl_dashboard, "priv/bin/run_job.sh")
 end

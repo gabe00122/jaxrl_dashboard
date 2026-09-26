@@ -3,6 +3,7 @@
 
 @import "tailwindcss" source(none);
 @import "phoenix-colocated/jaxrl_dashboard/colocated.css";
+@import "../node_modules/uplot/dist/uPlot.min.css";
 @source "../css";
 @source "../js";
 @source "../../lib/jaxrl_dashboard_web";
@@ -103,3 +104,8 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* uPlot crosshair: a solid hairline, not the default dashed rule. */
+.u-cursor-x {
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 35%, transparent) !important;
+}

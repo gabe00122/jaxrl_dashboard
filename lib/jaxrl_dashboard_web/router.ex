@@ -36,6 +36,8 @@ defmodule JaxrlDashboardWeb.Router do
       live "/", RunLive.Index, :index
       live "/runs/:name", RunLive.Show, :show
     end
+
+    get "/runs/:name/files/:file", RunFileController, :show
   end
 
   # Other scopes may use custom stacks.
