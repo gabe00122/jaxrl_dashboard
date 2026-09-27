@@ -30,6 +30,7 @@ config :jaxrl_dashboard, :config_validator, JaxrlDashboard.FakeConfigValidator
 # Tests start the scheduler themselves, against a fake training script.
 config :jaxrl_dashboard, :runs,
   train_command: ["bash", Path.expand("../test/support/fake_train.sh", __DIR__)],
+  record_command: ["bash", Path.expand("../test/support/fake_record.sh", __DIR__)],
   poll_interval: 20,
   watch_interval: 20,
   kill_grace_period: 2_000,

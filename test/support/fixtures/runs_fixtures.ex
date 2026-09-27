@@ -44,6 +44,23 @@ defmodule JaxrlDashboard.RunsFixtures do
     file_name
   end
 
+  @doc """
+  An imported run on a rust env with a saved checkpoint, so it can be
+  recorded. Pass `checkpoint: false` to leave out the checkpoint.
+  """
+  def recordable_run_fixture(name, opts \\ []) do
+    dir = Settings.experiment_dir(name)
+    File.mkdir_p!(dir)
+
+    if Keyword.get(opts, :checkpoint, true),
+      do: File.mkdir_p!(Path.join([dir, "checkpoints", "7"]))
+
+    config = %{"environment" => %{"env_type" => Keyword.get(opts, :env_type, "rust_multi")}}
+    File.write!(Path.join(dir, "config.json"), Jason.encode!(config))
+    {[^name], []} = JaxrlDashboard.Runs.import_existing_runs()
+    JaxrlDashboard.Runs.get_run_by_name!(name)
+  end
+
   @doc "Polls `fun` until it returns a truthy value, or fails after `timeout` ms."
   def wait_until(fun, timeout \\ 5_000) do
     deadline = System.monotonic_time(:millisecond) + timeout

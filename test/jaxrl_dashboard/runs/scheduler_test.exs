@@ -129,7 +129,7 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
     start_supervised!(Scheduler)
 
     run = wait_for_status(run, :failed)
-    assert run.error =~ "training command not found: .venv/bin/pmarl"
+    assert run.error =~ "command not found: .venv/bin/pmarl"
     assert run.pid == nil
   end
 end

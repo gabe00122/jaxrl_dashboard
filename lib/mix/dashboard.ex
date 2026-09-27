@@ -10,8 +10,8 @@ defmodule Mix.Dashboard do
   def start_app do
     Mix.Task.run("app.config")
 
-    # The running server owns the job queue; a short-lived task mustn't start
-    # a second scheduler that could launch runs.
+    # The running server owns the job queue and recordings; a short-lived
+    # task mustn't start a second scheduler or recorder that could launch jobs.
     runs = Application.fetch_env!(:jaxrl_dashboard, :runs)
     Application.put_env(:jaxrl_dashboard, :runs, Keyword.put(runs, :start_scheduler, false))
 

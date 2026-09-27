@@ -40,6 +40,7 @@ defmodule JaxrlDashboardWeb.Router do
     end
 
     get "/runs/:name/files/:file", RunFileController, :show
+    get "/runs/:name/videos/:set/:file", RunFileController, :video
   end
 
   # Other scopes may use custom stacks.

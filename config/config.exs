@@ -26,6 +26,13 @@ config :jaxrl_dashboard, :runs,
   # Dashboard-owned per-run files: input config, output log, pid, exit code.
   data_dir: Path.expand("../var/runs", __DIR__),
   train_command: [".venv/bin/pmarl", "train"],
+  # `pmarl record` renders policy videos; the dashboard appends the run name,
+  # `--base-dir` and `--out-dir`.
+  record_command: [".venv/bin/pmarl", "record"],
+  # Recordings share the GPU with training, so JAX mustn't grab most of its
+  # memory up front.
+  record_env: [{"XLA_PYTHON_CLIENT_PREALLOCATE", "false"}],
+  max_concurrent_recordings: 1,
   # jaxrl's Python, used to validate configs against its Pydantic models.
   python: ".venv/bin/python",
   # One GPU, so one training run at a time.
@@ -35,6 +42,7 @@ config :jaxrl_dashboard, :runs,
   watch_interval: 1_000,
   # How long a cancelled run gets to exit after SIGTERM before SIGKILL.
   kill_grace_period: 30_000,
+  # Starts the run scheduler and the video recorder.
   start_scheduler: true
 
 # Configure the endpoint

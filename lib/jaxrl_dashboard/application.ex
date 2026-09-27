@@ -39,7 +39,7 @@ defmodule JaxrlDashboard.Application do
 
   defp scheduler do
     if JaxrlDashboard.Runs.Settings.get(:start_scheduler),
-      do: [JaxrlDashboard.Runs.Scheduler],
+      do: [JaxrlDashboard.Runs.Scheduler, JaxrlDashboard.Videos.Recorder],
       else: []
   end
 
