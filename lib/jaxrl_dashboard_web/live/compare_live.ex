@@ -1,6 +1,7 @@
 defmodule JaxrlDashboardWeb.CompareLive do
   @moduledoc """
-  Several runs' metrics on the same charts, lined up by step.
+  Several runs' metrics on the same charts, lined up by step. Runs with
+  several stages (llm_rl's PPO pipeline) are compared by their main stage.
 
   The selection lives in the URL (`/compare?runs=a,b,c`) so a comparison can
   be bookmarked or shared. Each run keeps its color slot while the page is
@@ -11,7 +12,7 @@ defmodule JaxrlDashboardWeb.CompareLive do
 
   import JaxrlDashboardWeb.RunComponents
 
-  alias JaxrlDashboard.{Metrics, Runs}
+  alias JaxrlDashboard.{Metrics, Projects, Runs}
   alias JaxrlDashboard.Runs.Run
 
   # One per categorical palette slot; a 9th color would be indistinguishable.
@@ -44,6 +45,7 @@ defmodule JaxrlDashboardWeb.CompareLive do
           <.link navigate={~p"/runs/#{run.name}"} class="font-mono hover:underline">
             {run.name}
           </.link>
+          <.project_badge project={run.project} />
           <.status_badge run={run} />
           <button
             type="button"
@@ -154,7 +156,10 @@ defmodule JaxrlDashboardWeb.CompareLive do
 
     payload =
       for run <- runs do
-        run.name |> Metrics.load() |> Map.merge(%{name: run.name, slot: slots[run.name]})
+        run
+        |> Projects.stage_dir(Projects.main_stage(run))
+        |> Metrics.load()
+        |> Map.merge(%{name: run.name, slot: slots[run.name]})
       end
 
     last_steps = Map.new(payload, &{&1.name, List.last(&1.steps, -1)})
@@ -186,9 +191,14 @@ defmodule JaxrlDashboardWeb.CompareLive do
   defp compare_path(names), do: ~p"/compare?#{[runs: Enum.join(names, ",")]}"
 
   @impl true
-  def handle_info({:metrics, name, rows}, socket) do
-    case socket.assigns.last_steps do
-      # Not loaded yet: the hook's load reads the file, which has these rows.
+  def handle_info({:metrics, name, stage_id, rows}, socket) do
+    main_stage? =
+      Enum.any?(
+        socket.assigns.runs,
+        &(&1.name == name and Projects.main_stage(&1).id == stage_id)
+      )
+
+    case main_stage? && socket.assigns.last_steps do
       %{^name => last_step} ->
         case Enum.filter(rows, &(&1.step > last_step)) do
           [] ->
@@ -201,6 +211,8 @@ defmodule JaxrlDashboardWeb.CompareLive do
              |> update(:last_steps, &Map.put(&1, name, List.last(new_rows).step))}
         end
 
+      # Another stage, or not loaded yet: the hook's load reads the file,
+      # which has these rows.
       _ ->
         {:noreply, socket}
     end

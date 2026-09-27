@@ -9,9 +9,10 @@ defmodule JaxrlDashboard.Runs do
 
   import Ecto.Query, warn: false
 
-  alias JaxrlDashboard.{Configs, Repo}
+  alias JaxrlDashboard.{Configs, Projects, Repo}
   alias JaxrlDashboard.Accounts.Scope
-  alias JaxrlDashboard.Runs.{Run, Scheduler, Settings}
+  alias JaxrlDashboard.Projects.Project
+  alias JaxrlDashboard.Runs.{Run, Scheduler}
 
   @topic "runs"
 
@@ -40,13 +41,33 @@ defmodule JaxrlDashboard.Runs do
 
   ## Queries
 
-  def list_runs(limit \\ 200) do
-    Repo.all(
+  @doc """
+  The newest runs, newest first.
+
+  ## Options
+
+    * `:project` - only runs in this project (an id)
+    * `:limit` - at most this many (default 200)
+  """
+  def list_runs(opts \\ []) do
+    query =
       from r in Run,
         order_by: [desc: r.inserted_at, desc: r.id],
-        limit: ^limit,
+        limit: ^Keyword.get(opts, :limit, 200),
         preload: :user
-    )
+
+    query =
+      case Keyword.get(opts, :project) do
+        nil -> query
+        project -> where(query, [r], r.project == ^project)
+      end
+
+    Repo.all(query)
+  end
+
+  @doc "How many runs each project has, as `%{project_id => count}`."
+  def count_runs_by_project do
+    Repo.all(from r in Run, group_by: r.project, select: {r.project, count(r.id)}) |> Map.new()
   end
 
   @doc "Runs with the given names, in the given order. Unknown names are skipped."
@@ -63,6 +84,7 @@ defmodule JaxrlDashboard.Runs do
 
   def get_run!(id), do: Run |> Repo.get!(id) |> Repo.preload(:user)
   def get_run_by_name!(name), do: Run |> Repo.get_by!(name: name) |> Repo.preload(:user)
+  def get_run_by_name(name), do: Repo.get_by(Run, name: name)
 
   def list_running_runs do
     Repo.all(from r in Run, where: r.status == :running, order_by: r.started_at)
@@ -80,7 +102,7 @@ defmodule JaxrlDashboard.Runs do
   end
 
   @doc """
-  Queues a run from a file in the jaxrl config directory. The config is
+  Queues a run from a file in its project's config directory. The config is
   snapshotted now, so later edits to the file don't affect queued runs.
   """
   def enqueue_run(%Scope{user: user}, attrs) do
@@ -95,7 +117,7 @@ defmodule JaxrlDashboard.Runs do
 
   @doc """
   Queues a run from a config map, e.g. one made in the config builder.
-  The config must pass jaxrl's validation.
+  The config must pass its project's validation.
   """
   def enqueue_config_run(%Scope{user: user}, attrs) do
     %Run{status: :queued, user_id: user.id}
@@ -106,12 +128,14 @@ defmodule JaxrlDashboard.Runs do
     |> tap(fn result -> match?({:ok, _}, result) && Scheduler.poke() end)
   end
 
-  # Checks the config against jaxrl's Pydantic models, so a run never starts
-  # with a config pmarl would reject.
+  # Checks the config against the project's Pydantic models, so a run never
+  # starts with a config its trainer would reject.
   defp validate_config(%Ecto.Changeset{valid?: false} = changeset, _field), do: changeset
 
   defp validate_config(changeset, field) do
-    case Configs.validate(Ecto.Changeset.get_field(changeset, :config)) do
+    project = Ecto.Changeset.get_field(changeset, :project)
+
+    case Configs.validate(project, Ecto.Changeset.get_field(changeset, :config)) do
       {:ok, []} ->
         changeset
 
@@ -133,11 +157,15 @@ defmodule JaxrlDashboard.Runs do
   defp load_config(%Ecto.Changeset{valid?: false} = changeset), do: changeset
 
   defp load_config(changeset) do
-    path = Path.join(Settings.config_dir(), Ecto.Changeset.get_field(changeset, :config_source))
+    project = Projects.get!(Ecto.Changeset.get_field(changeset, :project))
+    path = Path.join(project.config_dir, Ecto.Changeset.get_field(changeset, :config_source))
 
     with {:ok, contents} <- File.read(path),
          {:ok, %{} = config} <- Jason.decode(contents) do
-      Ecto.Changeset.put_change(changeset, :config, config)
+      changeset
+      |> Run.put_config(config)
+      # The stages, and so the directories they'll write to, depend on the config.
+      |> Run.validate_results_dirs()
     else
       {:ok, _} -> Ecto.Changeset.add_error(changeset, :config_source, "is not a JSON object")
       {:error, _} -> Ecto.Changeset.add_error(changeset, :config_source, "is not valid JSON")
@@ -180,39 +208,55 @@ defmodule JaxrlDashboard.Runs do
   ## Importing runs trained outside the dashboard
 
   @doc """
-  Adds a run for every directory in the jaxrl results dir that has a
-  `config.json` and isn't known yet. Safe to run repeatedly.
+  Adds a run for every directory in each project's results dir that has a
+  `config.json` and isn't known yet. Directories written by a stage of a
+  known run (like an llm_rl run's `NAME-value`) are part of that run, not
+  runs of their own. Safe to run repeatedly.
 
   Returns `{imported_names, skipped}` where `skipped` lists
   `{name, reason}` for directories that couldn't be imported.
   """
   def import_existing_runs do
-    known = MapSet.new(Repo.all(from r in Run, select: r.name))
-    results_dir = Settings.results_dir()
+    known = Repo.all(from r in Run, select: r)
 
-    results_dir
-    |> File.ls()
-    |> case do
+    taken =
+      known
+      |> Enum.flat_map(fn run -> [run.name | Enum.map(Projects.stages(run), & &1.experiment)] end)
+      |> MapSet.new()
+
+    {imported, skipped, _taken} =
+      Enum.reduce(Projects.list(), {[], [], taken}, fn project, acc ->
+        project
+        |> result_dirs()
+        |> Enum.reduce(acc, fn name, {imported, skipped, taken} ->
+          if MapSet.member?(taken, name) do
+            {imported, skipped, taken}
+          else
+            case import_run(project, name) do
+              {:ok, run} ->
+                broadcast({:ok, run}, :run_created)
+                {[name | imported], skipped, MapSet.put(taken, name)}
+
+              {:error, reason} ->
+                {imported, [{name, reason} | skipped], taken}
+            end
+          end
+        end)
+      end)
+
+    {Enum.reverse(imported), Enum.reverse(skipped)}
+  end
+
+  defp result_dirs(%Project{results_dir: results_dir}) do
+    case File.ls(results_dir) do
       {:ok, entries} -> Enum.sort(entries)
       {:error, _} -> []
     end
-    |> Enum.reject(&MapSet.member?(known, &1))
     |> Enum.filter(&File.regular?(Path.join([results_dir, &1, "config.json"])))
-    |> Enum.reduce({[], []}, fn name, {imported, skipped} ->
-      case import_run(name) do
-        {:ok, run} ->
-          broadcast({:ok, run}, :run_created)
-          {[name | imported], skipped}
-
-        {:error, reason} ->
-          {imported, [{name, reason} | skipped]}
-      end
-    end)
-    |> then(fn {imported, skipped} -> {Enum.reverse(imported), Enum.reverse(skipped)} end)
   end
 
-  defp import_run(name) do
-    dir = Settings.experiment_dir(name)
+  defp import_run(%Project{} = project, name) do
+    dir = Project.experiment_dir(project, name)
 
     with {:ok, config} <- read_json(Path.join(dir, "config.json")) do
       meta =
@@ -224,6 +268,7 @@ defmodule JaxrlDashboard.Runs do
       started_at = parse_datetime(meta["start_time"])
 
       attrs = %{
+        project: project.id,
         name: name,
         config: config,
         config_source: meta["config_file"] && Path.basename(meta["config_file"]),

@@ -1,26 +1,30 @@
 defmodule JaxrlDashboardWeb.RunFileController do
   use JaxrlDashboardWeb, :controller
 
-  alias JaxrlDashboard.{Metrics, Runs, Videos}
+  alias JaxrlDashboard.{Metrics, Projects, Runs, Videos}
   alias JaxrlDashboard.Runs.Settings
 
   @doc """
   Downloads one of a run's raw files. Only these names are served, and the
   run must exist, so the path can't be steered anywhere else.
+
+  `logs.jsonl` is the main stage's unless `?stage=ID` names another of the
+  run's stages.
   """
-  def show(conn, %{"name" => name, "file" => file}) do
+  def show(conn, %{"name" => name, "file" => file} = params) do
     run = Runs.get_run_by_name!(name)
 
-    path =
-      case file do
-        "logs.jsonl" -> Metrics.path(run.name)
-        "output.log" -> Settings.output_path(run.name)
-        _ -> nil
+    {path, download_name} =
+      case {file, stage(run, params["stage"])} do
+        {"logs.jsonl", nil} -> {nil, nil}
+        {"logs.jsonl", stage} -> {Metrics.path(Projects.stage_dir(run, stage)), stage.experiment}
+        {"output.log", _stage} -> {Settings.output_path(run.name), run.name}
+        _ -> {nil, nil}
       end
 
     if path && File.regular?(path) do
       send_download(conn, {:file, path},
-        filename: "#{run.name}-#{file}",
+        filename: "#{download_name}-#{file}",
         content_type: "text/plain"
       )
     else
@@ -106,6 +110,9 @@ defmodule JaxrlDashboardWeb.RunFileController do
       _ -> :error
     end
   end
+
+  defp stage(run, nil), do: Projects.main_stage(run)
+  defp stage(run, id), do: Projects.stage(run, id)
 
   defp not_found(conn), do: conn |> put_status(:not_found) |> text("Not found")
 end

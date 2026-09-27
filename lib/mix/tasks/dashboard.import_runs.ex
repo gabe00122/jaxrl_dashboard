@@ -1,8 +1,9 @@
 defmodule Mix.Tasks.Dashboard.ImportRuns do
-  @shortdoc "Imports runs trained outside the dashboard from the jaxrl results dir"
+  @shortdoc "Imports runs trained outside the dashboard from every project's results dir"
   @moduledoc """
-  Adds every run in the jaxrl results directory that the dashboard doesn't
-  know about yet, so its config and metrics can be browsed. Safe to re-run.
+  Adds every run in each project's results directory (see
+  `config :jaxrl_dashboard, :projects`) that the dashboard doesn't know
+  about yet, so its config and metrics can be browsed. Safe to re-run.
 
       $ mix dashboard.import_runs
   """

@@ -1,54 +1,66 @@
 defmodule JaxrlDashboard.Metrics do
   @moduledoc """
-  Training metrics from jaxrl's `logs.jsonl`: one JSON object per update,
-  like `{"step": 12, "algo/actor_loss": 0.002, "env/reward": 0.05}`.
+  Training metrics from a run stage's `logs.jsonl`: one JSON object per
+  update, like `{"step": 12, "algo/actor_loss": 0.002, "env/reward": 0.05}`
+  (jaxrl) or `{"step": 12, "rewards.mean": 0.4, "rewards.max": 1.0}` (llm_rl).
 
   Rows are parsed into `%{step: 12, values: %{"algo/actor_loss" => 0.002}, nan: []}`.
   Non-finite values become `nil` in `values` and their keys are listed in `nan`,
   so charts can show where a run diverged.
+
+  llm_rl logs written before it logged steps have no `"step"`; loading a
+  whole file numbers those rows by line instead.
   """
 
-  alias JaxrlDashboard.Runs.{LogFile, Settings}
+  alias JaxrlDashboard.Runs.LogFile
 
   # Python's json.dumps writes NaN, Infinity and -Infinity, which aren't
   # valid JSON. Swap them for a marker string before decoding.
   @non_finite ~r/:\s*(?:-?Infinity|NaN)(?=\s*[,}])/
   @non_finite_marker "__non_finite__"
 
-  def path(run_name), do: Path.join(Settings.experiment_dir(run_name), "logs.jsonl")
+  @doc "The metrics log in a run stage's results directory."
+  def path(experiment_dir), do: Path.join(experiment_dir, "logs.jsonl")
 
   @doc """
   Parses one line of `logs.jsonl`. Returns `nil` for lines that aren't a
-  metrics row. Non-numeric values are dropped.
+  metrics row, and a row with a nil `step` for one without a step. Non-numeric
+  values are dropped.
   """
   def parse_line(line) do
     line = Regex.replace(@non_finite, line, ~s(: "#{@non_finite_marker}"))
 
     case Jason.decode(line) do
-      {:ok, %{"step" => step} = object} when is_integer(step) ->
-        {values, nan} =
-          object
-          |> Map.delete("step")
-          |> Enum.reduce({%{}, []}, fn
-            {key, value}, {values, nan} when is_number(value) ->
-              {Map.put(values, key, value), nan}
-
-            {key, @non_finite_marker}, {values, nan} ->
-              {Map.put(values, key, nil), [key | nan]}
-
-            _other, acc ->
-              acc
-          end)
-
-        %{step: step, values: values, nan: Enum.sort(nan)}
-
-      _ ->
-        nil
+      {:ok, %{"step" => step} = object} when is_integer(step) -> row(step, object)
+      {:ok, %{} = object} when not is_map_key(object, "step") -> row(nil, object)
+      _ -> nil
     end
   end
 
+  defp row(step, object) do
+    {values, nan} =
+      object
+      |> Map.delete("step")
+      |> Enum.reduce({%{}, []}, fn
+        {key, value}, {values, nan} when is_number(value) ->
+          {Map.put(values, key, value), nan}
+
+        {key, @non_finite_marker}, {values, nan} ->
+          {Map.put(values, key, nil), [key | nan]}
+
+        _other, acc ->
+          acc
+      end)
+
+    %{step: step, values: values, nan: Enum.sort(nan)}
+  end
+
+  @doc """
+  Parses lines read from a log that's being appended to. Rows without a step
+  are dropped: their position in the file isn't known.
+  """
   def parse_lines(lines) do
-    for {_offset, line} <- lines, row = parse_line(line), do: row
+    for {_offset, line} <- lines, row = parse_line(line), row.step != nil, do: row
   end
 
   @doc """
@@ -61,9 +73,19 @@ defmodule JaxrlDashboard.Metrics do
   tells a run that diverged (NaN from some step to the end) apart from one
   with occasional NaNs.
   """
-  def load(run_name) do
-    {lines, _offset} = LogFile.read_lines(path(run_name), 0, max_bytes: 64_000_000, partial: true)
-    lines |> parse_lines() |> to_columns()
+  def load(experiment_dir) do
+    {lines, _offset} =
+      LogFile.read_lines(path(experiment_dir), 0, max_bytes: 64_000_000, partial: true)
+
+    rows = for {_offset, line} <- lines, row = parse_line(line), do: row
+
+    rows
+    |> Enum.with_index()
+    |> Enum.map(fn
+      {%{step: nil} = row, index} -> %{row | step: index}
+      {row, _index} -> row
+    end)
+    |> to_columns()
   end
 
   def to_columns(rows) do

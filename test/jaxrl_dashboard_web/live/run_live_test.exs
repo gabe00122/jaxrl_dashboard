@@ -55,6 +55,7 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
 
       {:ok, run} =
         Runs.enqueue_run(Scope.for_user(user), %{
+          "project" => "jaxrl",
           "config_source" => "return.json",
           "name" => "elsewhere"
         })
@@ -66,7 +67,7 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
     end
 
     test "imported runs without an end time don't show a live timer", %{conn: conn} do
-      dir = Settings.experiment_dir("never-logged")
+      dir = experiment_dir("never-logged")
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "config.json"), "{}")
       File.write!(Path.join(dir, "meta.json"), ~s({"start_time": "2026-07-19T22:51:46Z"}))
@@ -82,8 +83,21 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
 
     test "selecting runs offers a comparison, in selection order", %{conn: conn, user: user} do
       scope = Scope.for_user(user)
-      {:ok, a} = Runs.enqueue_run(scope, %{"config_source" => "return.json", "name" => "run-a"})
-      {:ok, b} = Runs.enqueue_run(scope, %{"config_source" => "return.json", "name" => "run-b"})
+
+      {:ok, a} =
+        Runs.enqueue_run(scope, %{
+          "project" => "jaxrl",
+          "config_source" => "return.json",
+          "name" => "run-a"
+        })
+
+      {:ok, b} =
+        Runs.enqueue_run(scope, %{
+          "project" => "jaxrl",
+          "config_source" => "return.json",
+          "name" => "run-b"
+        })
+
       {:ok, view, _html} = live(conn, ~p"/")
       refute has_element?(view, "#compare-bar")
 
@@ -111,7 +125,11 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       runs =
         for i <- 1..9 do
           {:ok, run} =
-            Runs.enqueue_run(scope, %{"config_source" => "return.json", "name" => "r#{i}"})
+            Runs.enqueue_run(scope, %{
+              "project" => "jaxrl",
+              "config_source" => "return.json",
+              "name" => "r#{i}"
+            })
 
           run
         end
@@ -127,7 +145,12 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
     end
 
     test "cancels a queued run", %{conn: conn, user: user} do
-      {:ok, run} = Runs.enqueue_run(Scope.for_user(user), %{"config_source" => "return.json"})
+      {:ok, run} =
+        Runs.enqueue_run(Scope.for_user(user), %{
+          "project" => "jaxrl",
+          "config_source" => "return.json"
+        })
+
       {:ok, view, _html} = live(conn, ~p"/")
 
       view |> element("#runs-#{run.id} a", "Cancel") |> render_click()
@@ -146,6 +169,7 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
 
       {:ok, run} =
         Runs.enqueue_run(Scope.for_user(user), %{
+          "project" => "jaxrl",
           "config_source" => "return.json",
           "name" => "detail"
         })
@@ -189,7 +213,7 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       conn: conn,
       run: run
     } do
-      dir = Settings.experiment_dir(run.name)
+      dir = experiment_dir(run.name)
       File.mkdir_p!(dir)
 
       File.write!(
@@ -200,7 +224,11 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       {:ok, view, _html} = live(conn, ~p"/runs/detail")
 
       # Rows broadcast before the hook loads are skipped (the load covers them).
-      Runs.broadcast_run(run.name, {:metrics, run.name, [%{step: 1, values: %{}, nan: []}]})
+      Runs.broadcast_run(
+        run.name,
+        {:metrics, run.name, "train", [%{step: 1, values: %{}, nan: []}]}
+      )
+
       refute_push_event(view, "metrics_append", _)
 
       view |> element("#metrics") |> render_hook("load_metrics", %{})
@@ -219,7 +247,7 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
 
       # Already-sent steps are dropped; new ones are pushed.
       rows = [%{step: 1, values: %{}, nan: []}, %{step: 2, values: %{"loss" => 0.5}, nan: []}]
-      Runs.broadcast_run(run.name, {:metrics, run.name, rows})
+      Runs.broadcast_run(run.name, {:metrics, run.name, "train", rows})
 
       assert_push_event(view, "metrics_append", %{run: "detail", rows: [%{step: 2}]})
     end
@@ -246,6 +274,136 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
     end
   end
 
+  describe "projects" do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
+      write_config("return.json", %{"seed" => 1})
+      write_config("grpo.json", %{"loss" => %{"type" => "grpo"}, "logger" => %{}}, "llm_rl")
+      write_config("ppo.json", %{"loss" => %{"type" => "ppo"}, "logger" => %{}}, "llm_rl")
+      %{scope: Scope.for_user(user)}
+    end
+
+    test "the index filters by project and counts each one's runs", %{conn: conn, scope: scope} do
+      {:ok, grid} =
+        Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "return.json"})
+
+      {:ok, llm} =
+        Runs.enqueue_run(scope, %{"project" => "llm_rl", "config_source" => "grpo.json"})
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      assert has_element?(view, "#runs-#{grid.id}")
+      assert has_element?(view, "#runs-#{llm.id}", "llm_rl")
+      assert has_element?(view, "#filter-all", "2")
+      assert has_element?(view, "#filter-llm_rl", "1")
+
+      view |> element("#filter-llm_rl") |> render_click()
+      assert_patch(view, ~p"/?#{[project: "llm_rl"]}")
+      refute has_element?(view, "#runs-#{grid.id}")
+      assert has_element?(view, "#runs-#{llm.id}")
+
+      # Following a project also makes it the one to queue in.
+      assert has_element?(view, ~s(#enqueue-form option[value="llm_rl"][selected]))
+      assert has_element?(view, "#enqueue-form option", "grpo.json")
+      refute has_element?(view, "#enqueue-form option", "return.json")
+
+      # New runs in other projects don't show up in the filtered list.
+      {:ok, other} =
+        Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "return.json"})
+
+      refute has_element?(view, "#runs-#{other.id}")
+      assert has_element?(view, "#filter-jaxrl", "2")
+    end
+
+    test "queues a run in the chosen project", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      refute has_element?(view, "#enqueue-form option", "grpo.json")
+
+      # Picking another project swaps the config files on offer.
+      view |> form("#enqueue-form", run: %{project: "llm_rl"}) |> render_change()
+      assert has_element?(view, "#enqueue-form option", "grpo.json")
+
+      view
+      |> form("#enqueue-form",
+        run: %{project: "llm_rl", config_source: "grpo.json", name: "llm-1"}
+      )
+      |> render_submit()
+
+      assert Runs.get_run_by_name!("llm-1").project == "llm_rl"
+    end
+
+    test "a pipeline run's page shows each stage's metrics, following the pipeline", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, run} =
+        Runs.enqueue_run(scope, %{
+          "project" => "llm_rl",
+          "config_source" => "ppo.json",
+          "name" => "piped"
+        })
+
+      value_dir = experiment_dir("piped-value", "llm_rl")
+      File.mkdir_p!(value_dir)
+      File.write!(Path.join(value_dir, "logs.jsonl"), ~s({"step": 0, "value_loss.mean": 2.0}\n))
+
+      {:ok, view, _html} = live(conn, ~p"/runs/piped")
+
+      assert has_element?(view, "#run-project", "llm_rl")
+      assert has_element?(view, ~s(#stage-value[aria-selected="true"]))
+      assert has_element?(view, "#stage-rl")
+
+      assert has_element?(
+               view,
+               ~s(a[href="/runs/piped/files/logs.jsonl?stage=value"])
+             )
+
+      view |> element("#metrics") |> render_hook("load_metrics", %{})
+      assert_reply(view, %{runs: [%{steps: [0], series: %{"value_loss.mean" => [2.0]}}]})
+
+      # Rows of the shown stage are pushed...
+      Runs.broadcast_run(run.name, {:metrics, run.name, "value", [row(1)]})
+      assert_push_event(view, "metrics_append", %{rows: [%{step: 1}]})
+
+      # ...and once the RL stage starts logging, the page moves on to it.
+      Runs.broadcast_run(run.name, {:metrics, run.name, "rl", [row(0)]})
+      assert_push_event(view, "metrics_reload", %{})
+      assert has_element?(view, ~s(#stage-rl[aria-selected="true"]))
+
+      # Picking a stage by hand sticks.
+      view |> element("#stage-value") |> render_click()
+      assert has_element?(view, ~s(#stage-value[aria-selected="true"]))
+      Runs.broadcast_run(run.name, {:metrics, run.name, "rl", [row(1)]})
+      assert has_element?(view, ~s(#stage-value[aria-selected="true"]))
+    end
+
+    test "a stage's logs.jsonl can be downloaded", %{conn: conn, scope: scope} do
+      {:ok, _} =
+        Runs.enqueue_run(scope, %{
+          "project" => "llm_rl",
+          "config_source" => "ppo.json",
+          "name" => "dl2"
+        })
+
+      for {dir, row} <- [{"dl2-value", "value"}, {"dl2", "rl"}] do
+        File.mkdir_p!(experiment_dir(dir, "llm_rl"))
+        File.write!(Path.join(experiment_dir(dir, "llm_rl"), "logs.jsonl"), row)
+      end
+
+      assert conn |> get(~p"/runs/dl2/files/logs.jsonl?#{[stage: "value"]}") |> response(200) ==
+               "value"
+
+      # The main stage by default.
+      conn1 = get(conn, ~p"/runs/dl2/files/logs.jsonl")
+      assert response(conn1, 200) == "rl"
+      assert get_resp_header(conn1, "content-disposition") |> hd() =~ "dl2-logs.jsonl"
+
+      assert conn |> get(~p"/runs/dl2/files/logs.jsonl?#{[stage: "nope"]}") |> response(404)
+    end
+  end
+
+  defp row(step), do: %{step: step, values: %{"x" => 1.0}, nan: []}
+
   describe "file downloads" do
     setup :register_and_log_in_user
 
@@ -253,14 +411,18 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       write_config("return.json")
 
       {:ok, run} =
-        Runs.enqueue_run(Scope.for_user(user), %{"config_source" => "return.json", "name" => "dl"})
+        Runs.enqueue_run(Scope.for_user(user), %{
+          "project" => "jaxrl",
+          "config_source" => "return.json",
+          "name" => "dl"
+        })
 
       %{run: run}
     end
 
     test "serves a run's logs.jsonl and output.log", %{conn: conn, run: run} do
-      File.mkdir_p!(Settings.experiment_dir(run.name))
-      File.write!(JaxrlDashboard.Metrics.path(run.name), ~s({"step": 0}\n))
+      File.mkdir_p!(experiment_dir(run.name))
+      File.write!(JaxrlDashboard.Metrics.path(experiment_dir(run.name)), ~s({"step": 0}\n))
       File.mkdir_p!(Settings.job_dir(run.name))
       File.write!(Settings.output_path(run.name), "hello\n")
 

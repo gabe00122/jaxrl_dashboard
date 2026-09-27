@@ -10,10 +10,8 @@ defmodule JaxrlDashboard.VideosTest do
   setup :setup_run_dirs
 
   defp fake_record(args) do
-    [bash, script] =
-      Application.fetch_env!(:jaxrl_dashboard, :runs)[:record_command] |> Enum.take(2)
-
-    put_run_setting(:record_command, [bash, script | args])
+    [bash, script] = project("jaxrl").record_command |> Enum.take(2)
+    put_project_setting("jaxrl", :record_command, [bash, script | args])
   end
 
   defp wait_for_state(name, state, timeout \\ 5_000) do
@@ -21,17 +19,19 @@ defmodule JaxrlDashboard.VideosTest do
   end
 
   describe "recordable?/1" do
-    test "only rust envs" do
-      assert Videos.recordable?(%Runs.Run{
-               config: %{"environment" => %{"env_type" => "rust_multi"}}
-             })
+    defp run_with(config, project \\ "jaxrl"), do: %Runs.Run{project: project, config: config}
 
-      assert Videos.recordable?(%Runs.Run{
-               config: %{"environment" => %{"env_type" => "rust_snake"}}
-             })
+    test "only jaxrl runs on rust envs" do
+      assert Videos.recordable?(run_with(%{"environment" => %{"env_type" => "rust_multi"}}))
+      assert Videos.recordable?(run_with(%{"environment" => %{"env_type" => "rust_snake"}}))
 
-      refute Videos.recordable?(%Runs.Run{config: %{"environment" => %{"env_type" => "craftax"}}})
-      refute Videos.recordable?(%Runs.Run{config: %{}})
+      refute Videos.recordable?(run_with(%{"environment" => %{"env_type" => "craftax"}}))
+      refute Videos.recordable?(run_with(%{}))
+
+      # llm_rl has no record command.
+      refute Videos.recordable?(
+               run_with(%{"environment" => %{"env_type" => "rust_multi"}}, "llm_rl")
+             )
     end
   end
 
@@ -138,7 +138,13 @@ defmodule JaxrlDashboard.VideosTest do
     end
 
     test "falls back to the exit code when there's no exception to show" do
-      put_run_setting(:record_command, ["bash", "-c", "echo 'snake: step 1/2'; exit 137", "--"])
+      put_project_setting("jaxrl", :record_command, [
+        "bash",
+        "-c",
+        "echo 'snake: step 1/2'; exit 137",
+        "--"
+      ])
+
       run = recordable_run_fixture("killed")
       start_supervised!(Recorder)
 
@@ -150,7 +156,7 @@ defmodule JaxrlDashboard.VideosTest do
     test "refuses runs it can't record" do
       start_supervised!(Recorder)
 
-      assert {:error, "Only runs on rust environments can be recorded."} =
+      assert {:error, "Only jaxrl runs on rust environments can be recorded."} =
                Recorder.start(recordable_run_fixture("jax", env_type: "find_return"))
 
       assert {:error, "fresh hasn't saved a checkpoint yet."} =

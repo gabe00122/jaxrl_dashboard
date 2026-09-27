@@ -40,9 +40,9 @@ defmodule JaxrlDashboard.Videos.Recorder do
   def handle_call({:start, run}, _from, state) do
     cond do
       not Videos.recordable?(run) ->
-        {:reply, {:error, "Only runs on rust environments can be recorded."}, state}
+        {:reply, {:error, "Only jaxrl runs on rust environments can be recorded."}, state}
 
-      not Videos.has_checkpoint?(run.name) ->
+      not Videos.has_checkpoint?(run) ->
         {:reply, {:error, "#{run.name} hasn't saved a checkpoint yet."}, state}
 
       Map.has_key?(state.active, run.name) ->

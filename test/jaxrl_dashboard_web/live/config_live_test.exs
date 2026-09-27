@@ -5,7 +5,6 @@ defmodule JaxrlDashboardWeb.ConfigLiveTest do
   import JaxrlDashboard.RunsFixtures
 
   alias JaxrlDashboard.{FakeConfigValidator, Runs}
-  alias JaxrlDashboard.Runs.Settings
 
   setup :setup_run_dirs
 
@@ -172,9 +171,9 @@ defmodule JaxrlDashboardWeb.ConfigLiveTest do
 
       view |> form("#save-form", file: %{name: "tuned"}) |> render_submit()
 
-      assert_patch(view, ~p"/configs/new?#{[from: "file:tuned.json"]}")
+      assert_patch(view, ~p"/configs/new?#{[project: "jaxrl", from: "file:tuned.json"]}")
 
-      assert Jason.decode!(File.read!(Path.join(Settings.config_dir(), "tuned.json")))[
+      assert Jason.decode!(File.read!(Path.join(config_dir(), "tuned.json")))[
                "update_steps"
              ] == 9
 
@@ -190,6 +189,7 @@ defmodule JaxrlDashboardWeb.ConfigLiveTest do
     test "starts from a run's config", %{conn: conn, user: user} do
       {:ok, _} =
         Runs.enqueue_run(JaxrlDashboard.Accounts.Scope.for_user(user), %{
+          "project" => "jaxrl",
           "config_source" => "base.json",
           "name" => "earlier"
         })
@@ -201,8 +201,87 @@ defmodule JaxrlDashboardWeb.ConfigLiveTest do
     end
 
     test "falls back to defaults for an unknown source", %{conn: conn} do
-      assert {:error, {:live_redirect, %{to: "/configs/new"}}} =
+      assert {:error, {:live_redirect, %{to: "/configs/new?project=jaxrl"}}} =
                live(conn, ~p"/configs/new?#{[from: "file:nope.json"]}")
+    end
+  end
+
+  describe "the builder in another project" do
+    setup :register_and_log_in_user
+
+    @ppo %{
+      "base_model" => "Qwen/Qwen3-4B-Instruct-2507",
+      "loss" => %{"type" => "ppo", "gae_lambda" => 0.95},
+      "logger" => %{"use_jsonl" => false, "use_wandb" => true},
+      "env" => %{"name" => "wordle", "max_guesses" => 6}
+    }
+
+    setup do
+      write_config("base.json", @base)
+      write_config("ppo.json", @ppo, "llm_rl")
+      :ok
+    end
+
+    test "works in the project from the URL, with its own files and schema", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/configs/new?#{[project: "llm_rl"]}")
+
+      assert html =~ "Starting from llm_rl&#39;s defaults."
+      assert has_element?(view, ~s(#project-llm_rl[aria-current="page"]))
+      assert has_element?(view, "#start-from a", "ppo.json")
+      refute has_element?(view, "#start-from a", "base.json")
+      # llm_rl's schema: a tagged loss union, not jaxrl's learner.
+      assert has_element?(view, ~s(#config-form [name="config[loss][__variant]"]))
+      refute has_element?(view, ~s(#config-form [name^="config[learner]"]))
+    end
+
+    test "switching projects starts over in the other one", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/configs/new?#{[from: "file:base.json"]}")
+      assert has_element?(view, ~s(#project-jaxrl[aria-current="page"]))
+
+      view |> element("#project-llm_rl") |> render_click()
+
+      assert_patch(view, ~p"/configs/new?#{[project: "llm_rl"]}")
+      assert has_element?(view, "#start-from a", "ppo.json")
+    end
+
+    test "says how the run will go before it's queued, then queues it", %{conn: conn} do
+      {:ok, view, _html} =
+        live(conn, ~p"/configs/new?#{[project: "llm_rl", from: "file:ppo.json"]}")
+
+      assert view |> element("#queue-stages") |> render() =~ "Value warmup"
+      assert view |> element("#queue-adjustments") |> render() =~ "logger.use_jsonl = true"
+
+      view |> form("#queue-form", run: %{name: "wordle-ppo"}) |> render_submit()
+      assert_redirect(view, ~p"/runs/wordle-ppo")
+
+      run = Runs.get_run_by_name!("wordle-ppo")
+      assert run.project == "llm_rl"
+      assert run.config["logger"]["use_jsonl"] == true
+    end
+
+    test "opens a run's config in the run's project", %{conn: conn, user: user} do
+      {:ok, _} =
+        Runs.enqueue_run(JaxrlDashboard.Accounts.Scope.for_user(user), %{
+          "project" => "llm_rl",
+          "config_source" => "ppo.json",
+          "name" => "earlier-llm"
+        })
+
+      {:ok, view, html} = live(conn, ~p"/configs/new?#{[from: "run:earlier-llm"]}")
+
+      assert html =~ "Based on earlier-llm."
+      assert has_element?(view, ~s(#project-llm_rl[aria-current="page"]))
+    end
+
+    test "saves files to the project's config directory", %{conn: conn} do
+      {:ok, view, _html} =
+        live(conn, ~p"/configs/new?#{[project: "llm_rl", from: "file:ppo.json"]}")
+
+      view |> form("#save-form", file: %{name: "copy"}) |> render_submit()
+
+      assert_patch(view, ~p"/configs/new?#{[project: "llm_rl", from: "file:copy.json"]}")
+      assert "copy.json" in config_files("llm_rl")
+      refute "copy.json" in config_files("jaxrl")
     end
   end
 end

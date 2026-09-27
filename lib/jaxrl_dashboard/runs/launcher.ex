@@ -9,6 +9,8 @@ defmodule JaxrlDashboard.Runs.Launcher do
   job directory (see `run_job.sh`).
   """
 
+  alias JaxrlDashboard.Projects
+  alias JaxrlDashboard.Projects.Project
   alias JaxrlDashboard.Runs.{Run, Settings}
 
   @pid_wait_attempts 50
@@ -19,16 +21,13 @@ defmodule JaxrlDashboard.Runs.Launcher do
   Returns `{:ok, os_pid}` or `{:error, reason}`.
   """
   def launch(%Run{} = run) do
+    project = Projects.for_run(run)
     job_dir = Settings.job_dir(run.name)
     config_path = Path.join(job_dir, "config.json")
 
-    command =
-      Settings.get(:train_command) ++
-        ["--config", config_path, "--base-dir", Settings.results_dir(), "--name", run.name]
-
     with :ok <- File.mkdir_p(job_dir),
          :ok <- File.write(config_path, Jason.encode_to_iodata!(run.config, pretty: true)) do
-      start_job(job_dir, command)
+      start_job(project, job_dir, Project.train_command(project, run.name, config_path))
     else
       {:error, reason} when is_atom(reason) ->
         {:error, "#{job_dir}: #{:file.format_error(reason)}"}
@@ -39,7 +38,7 @@ defmodule JaxrlDashboard.Runs.Launcher do
   end
 
   @doc """
-  Starts `command` in the jaxrl project dir through `run_job.sh`, detached
+  Starts `command` in the project's checkout through `run_job.sh`, detached
   from the BEAM, with `job_dir` (which must exist) for its pid, output and
   exit code. Returns `{:ok, os_pid}` or `{:error, reason}`.
 
@@ -47,9 +46,9 @@ defmodule JaxrlDashboard.Runs.Launcher do
 
     * `:env` - extra environment variables, as `{name, value}` string pairs
   """
-  def start_job(job_dir, command, opts \\ []) do
-    with :ok <- check_command(command) do
-      args = ["--fork", wrapper_path(), job_dir, Settings.project_dir() | command]
+  def start_job(%Project{dir: project_dir}, job_dir, command, opts \\ []) do
+    with :ok <- check_command(command, project_dir) do
+      args = ["--fork", wrapper_path(), job_dir, project_dir | command]
 
       case System.cmd("setsid", args, stderr_to_stdout: true, env: Keyword.get(opts, :env, [])) do
         {_, 0} -> wait_for_pid(job_dir, @pid_wait_attempts)
@@ -59,11 +58,11 @@ defmodule JaxrlDashboard.Runs.Launcher do
   end
 
   # Catch a misconfigured command up front instead of as an opaque exit 127.
-  defp check_command([exe | _]) do
+  defp check_command([exe | _], project_dir) do
     cond do
       not String.contains?(exe, "/") -> :ok
-      File.exists?(Path.expand(exe, Settings.project_dir())) -> :ok
-      true -> {:error, "command not found: #{exe} (in #{Settings.project_dir()})"}
+      File.exists?(Path.expand(exe, project_dir)) -> :ok
+      true -> {:error, "command not found: #{exe} (in #{project_dir})"}
     end
   end
 
@@ -108,7 +107,7 @@ defmodule JaxrlDashboard.Runs.Launcher do
   """
   def alive?(%Run{pid: pid, name: name}), do: job_alive?(pid, Settings.job_dir(name))
 
-  @doc "Like `alive?/1`, for any job started with `start_job/3`."
+  @doc "Like `alive?/1`, for any job started with `start_job/4`."
   def job_alive?(nil, _job_dir), do: false
 
   def job_alive?(pid, job_dir) do
@@ -124,7 +123,7 @@ defmodule JaxrlDashboard.Runs.Launcher do
   def signal(%Run{pid: pid, name: name}, signal),
     do: signal_job(pid, Settings.job_dir(name), signal)
 
-  @doc "Like `signal/2`, for any job started with `start_job/3`."
+  @doc "Like `signal/2`, for any job started with `start_job/4`."
   def signal_job(pid, job_dir, signal) when signal in ["TERM", "KILL"] do
     if job_alive?(pid, job_dir) do
       System.cmd("kill", ["-#{signal}", "--", "-#{pid}"], stderr_to_stdout: true)

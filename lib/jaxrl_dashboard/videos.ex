@@ -1,7 +1,9 @@
 defmodule JaxrlDashboard.Videos do
   @moduledoc """
-  Policy videos of rust-env runs, recorded on demand with `pmarl record`:
-  one episode per task, played by the run's latest checkpoint.
+  Policy videos of jaxrl rust-env runs, recorded on demand with the
+  project's `record_command` (`pmarl record`): one episode per task, played
+  by the run's latest checkpoint. Projects without a `record_command` have no
+  videos.
 
   Everything lives on disk in the run's job directory, so there is nothing
   to migrate and a restarted dashboard picks up where it left off:
@@ -19,23 +21,25 @@ defmodule JaxrlDashboard.Videos do
   which broadcasts `{:videos, name, status}` on the run's topic.
   """
 
-  alias JaxrlDashboard.Runs
+  alias JaxrlDashboard.{Projects, Runs}
+  alias JaxrlDashboard.Projects.Project
   alias JaxrlDashboard.Runs.{Launcher, LogFile, Run, Settings}
 
   @set_id ~r/^\d{8}T\d{6}Z$/
   @video_file ~r/^task-\d+\.mp4$/
   @output_tail_bytes 16 * 1024
 
-  @doc "Whether the run's environment is one the rust recorder can render."
-  def recordable?(%Run{config: %{"environment" => %{"env_type" => "rust_" <> _}}}), do: true
-  def recordable?(%Run{}), do: false
+  @doc "Whether the run's project can record it (for jaxrl: a rust environment)."
+  def recordable?(%Run{} = run), do: Project.recordable?(Projects.for_run(run), run.config)
 
   @doc """
   Whether the run has saved a checkpoint to play. Orbax writes each one to a
   temp directory and renames it to the bare step number once it's complete.
   """
-  def has_checkpoint?(name) do
-    case File.ls(Path.join(Settings.experiment_dir(name), "checkpoints")) do
+  def has_checkpoint?(%Run{} = run) do
+    dir = Projects.stage_dir(run, Projects.main_stage(run))
+
+    case File.ls(Path.join(dir, "checkpoints")) do
       {:ok, entries} -> Enum.any?(entries, &Regex.match?(~r/^\d+$/, &1))
       {:error, _} -> false
     end
@@ -235,11 +239,12 @@ defmodule JaxrlDashboard.Videos do
   ## Used by the recorder
 
   @doc """
-  Starts `pmarl record` for the run in a new set directory. Use
+  Starts the project's `record_command` for the run in a new set directory. Use
   `JaxrlDashboard.Videos.Recorder.start/1`, which checks it isn't already
   recording and limits how many recordings run at once.
   """
-  def launch(%Run{name: name}) do
+  def launch(%Run{name: name} = run) do
+    project = Projects.for_run(run)
     job_dir = job_dir(name)
     set_id = Calendar.strftime(DateTime.utc_now(), "%Y%m%dT%H%M%SZ")
 
@@ -249,16 +254,16 @@ defmodule JaxrlDashboard.Videos do
     File.write!(Path.join(job_dir, "set"), set_id)
 
     command =
-      Settings.get(:record_command) ++
+      project.record_command ++
         [
           name,
           "--base-dir",
-          Settings.results_dir(),
+          project.results_dir,
           "--out-dir",
           Path.join(videos_dir(name), set_id)
         ]
 
-    Launcher.start_job(job_dir, command, env: Settings.get(:record_env))
+    Launcher.start_job(project, job_dir, command, env: project.record_env)
   end
 
   @doc "Stops a recording. Its partial set is pruned once it's gone."

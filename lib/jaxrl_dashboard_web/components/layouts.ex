@@ -38,7 +38,7 @@ defmodule JaxrlDashboardWeb.Layouts do
     <header class="navbar border-b border-base-300 px-4 sm:px-6 lg:px-8">
       <div class="flex flex-1 items-center">
         <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-semibold tracking-tight">
-          <.icon name="hero-cpu-chip" class="size-5 text-primary" /> jaxrl dashboard
+          <.icon name="hero-cpu-chip" class="size-5 text-primary" /> rl dashboard
         </.link>
         <nav :if={@current_scope} class="ml-6 flex items-center gap-1 text-sm">
           <.link navigate={~p"/"} class="btn btn-ghost btn-sm">Runs</.link>

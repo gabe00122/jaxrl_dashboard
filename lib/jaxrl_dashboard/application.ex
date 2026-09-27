@@ -32,7 +32,7 @@ defmodule JaxrlDashboard.Application do
 
   defp config_validator do
     case Application.fetch_env!(:jaxrl_dashboard, :config_validator) do
-      JaxrlDashboard.Configs.PythonValidator = validator -> [validator]
+      JaxrlDashboard.Configs.PythonValidator = validator -> validator.child_specs()
       _fake -> []
     end
   end

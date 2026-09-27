@@ -3,7 +3,7 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
 
   import JaxrlDashboardWeb.RunComponents
 
-  alias JaxrlDashboard.{Metrics, Runs, Videos}
+  alias JaxrlDashboard.{Metrics, Projects, Runs, Videos}
   alias JaxrlDashboard.Runs.{LogFile, Run, Settings}
   alias JaxrlDashboard.Videos.Recorder
 
@@ -17,7 +17,12 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
 
       <.header>
         <span class="font-mono">{@run.name}</span>
-        <:subtitle><.status_badge run={@run} /></:subtitle>
+        <:subtitle>
+          <span class="inline-flex items-center gap-2">
+            <.project_badge id="run-project" project={@run.project} />
+            <.status_badge run={@run} />
+          </span>
+        </:subtitle>
         <:actions>
           <.link
             navigate={~p"/configs/new?#{[from: "run:" <> @run.name]}"}
@@ -61,16 +66,25 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
         <.detail label="Finished"><.local_time id="run-finished" at={@run.finished_at} /></.detail>
         <.detail label="Duration"><.duration id="run-duration" run={@run} /></.detail>
         <.detail label="Exit code">{@run.exit_code || "—"}</.detail>
-        <.detail label="Results">
-          <span class="font-mono text-xs break-all">{@experiment_dir}</span>
-        </.detail>
+        <div class="col-span-2 sm:col-span-4">
+          <dt class="text-xs text-base-content/60">Results</dt>
+          <dd :for={stage <- @stages} class="mt-0.5 flex items-baseline gap-2">
+            <span :if={length(@stages) > 1} class="w-24 shrink-0 text-xs text-base-content/60">
+              {stage.label}
+            </span>
+            <span class="font-mono text-xs break-all">{Projects.stage_dir(@run, stage)}</span>
+          </dd>
+        </div>
       </dl>
 
       <section>
-        <div class="mb-2 flex items-baseline justify-between gap-4">
-          <h2 class="text-sm font-semibold">Metrics</h2>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h2 class="text-sm font-semibold">Metrics</h2>
+            <.stage_tabs :if={length(@stages) > 1} stages={@stages} stage={@stage} logged={@logged} />
+          </div>
           <.link
-            href={~p"/runs/#{@run.name}/files/logs.jsonl"}
+            href={~p"/runs/#{@run.name}/files/logs.jsonl?#{stage_query(@stages, @stage)}"}
             class="text-xs text-base-content/60 hover:text-base-content"
           >
             <.icon name="hero-arrow-down-tray-micro" class="size-3.5" /> logs.jsonl
@@ -121,6 +135,53 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     </Layouts.app>
     """
   end
+
+  attr :stages, :list, required: true
+  attr :stage, :any, required: true
+  attr :logged, MapSet, required: true, doc: "ids of stages that have logged metrics"
+
+  # The stages a pipeline run goes through, in order; picking one shows its
+  # metrics. Stages that haven't logged anything yet are dimmed.
+  defp stage_tabs(assigns) do
+    ~H"""
+    <div
+      id="stage-tabs"
+      role="tablist"
+      class="flex items-center gap-0.5 rounded-field bg-base-200 p-0.5"
+    >
+      <%= for {stage, index} <- Enum.with_index(@stages) do %>
+        <.icon
+          :if={index > 0}
+          name="hero-chevron-right-micro"
+          class="size-3.5 text-base-content/30"
+        />
+        <button
+          type="button"
+          role="tab"
+          id={"stage-#{stage.id}"}
+          aria-selected={to_string(stage.id == @stage.id)}
+          phx-click="select_stage"
+          phx-value-stage={stage.id}
+          class={[
+            "rounded-[calc(var(--radius-field)-2px)] px-2.5 py-1 text-xs font-medium transition-all duration-150",
+            if(stage.id == @stage.id,
+              do: "bg-base-100 text-base-content shadow-sm",
+              else: "text-base-content/60 hover:text-base-content"
+            ),
+            !MapSet.member?(@logged, stage.id) && stage.id != @stage.id && "opacity-60"
+          ]}
+          title={if !MapSet.member?(@logged, stage.id), do: "No metrics logged yet"}
+        >
+          {stage.label}
+        </button>
+      <% end %>
+    </div>
+    """
+  end
+
+  # Single-stage runs keep the plain URL.
+  defp stage_query([_only], _stage), do: []
+  defp stage_query(_stages, stage), do: [stage: stage.id]
 
   attr :run, Run, required: true
   attr :videos, :map, required: true
@@ -286,13 +347,25 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
       LogFile.read_tail_lines(Settings.output_path(name), @output_tail_bytes)
 
     recordable? = Videos.recordable?(run)
+    stages = Projects.stages(run)
+
+    logged =
+      for stage <- stages,
+          File.exists?(Metrics.path(Projects.stage_dir(run, stage))),
+          into: MapSet.new(),
+          do: stage.id
 
     {:ok,
      socket
      |> assign(
        page_title: run.name,
        run: run,
-       experiment_dir: Settings.experiment_dir(run.name),
+       stages: stages,
+       # Shown: the furthest stage that has logged anything.
+       stage: Enum.find(Enum.reverse(stages), hd(stages), &MapSet.member?(logged, &1.id)),
+       logged: logged,
+       # Once a stage is picked by hand, a later stage starting doesn't switch to it.
+       stage_picked?: false,
        output_offset: output_offset,
        output_empty?: lines == [],
        recordable?: recordable?,
@@ -329,13 +402,33 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     {:noreply, socket}
   end
 
-  # The chart hook asks for the full history once it's mounted; after that it
-  # gets appended rows pushed as "metrics_append".
+  def handle_event("select_stage", %{"stage" => id}, socket) do
+    case Enum.find(socket.assigns.stages, &(&1.id == id)) do
+      nil -> {:noreply, socket}
+      stage -> {:noreply, socket |> assign(stage_picked?: true) |> show_stage(stage)}
+    end
+  end
+
+  # The chart hook asks for the full history once it's mounted (and again
+  # when the stage changes); after that it gets appended rows pushed as
+  # "metrics_append".
   def handle_event("load_metrics", _params, socket) do
-    name = socket.assigns.run.name
-    metrics = name |> Metrics.load() |> Map.merge(%{name: name, slot: 0})
+    %{run: run, stage: stage} = socket.assigns
+
+    metrics =
+      Projects.stage_dir(run, stage) |> Metrics.load() |> Map.merge(%{name: run.name, slot: 0})
 
     {:reply, %{runs: [metrics]}, assign(socket, metrics_last_step: List.last(metrics.steps, -1))}
+  end
+
+  defp show_stage(socket, stage) do
+    if stage.id == socket.assigns.stage.id do
+      socket
+    else
+      socket
+      |> assign(stage: stage, metrics_last_step: nil)
+      |> push_event("metrics_reload", %{})
+    end
   end
 
   @impl true
@@ -347,16 +440,18 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     {:noreply, socket}
   end
 
-  # Before the hook has loaded, rows are skipped: its load reads the file,
-  # which already has them.
-  def handle_info({:metrics, _name, _rows}, %{assigns: %{metrics_last_step: nil}} = socket) do
-    {:noreply, socket}
-  end
+  def handle_info({:metrics, name, stage_id, rows}, socket) do
+    socket = note_logged(socket, stage_id)
+    %{stage: stage, metrics_last_step: last_step} = socket.assigns
 
-  def handle_info({:metrics, name, rows}, socket) do
-    last_step = socket.assigns.metrics_last_step
+    # Other stages' rows are skipped, and so are rows from before the hook
+    # has loaded: its load reads the file, which already has them.
+    new_rows =
+      if stage_id == stage.id and last_step != nil,
+        do: Enum.filter(rows, &(&1.step > last_step)),
+        else: []
 
-    case Enum.filter(rows, &(&1.step > last_step)) do
+    case new_rows do
       [] ->
         {:noreply, socket}
 
@@ -387,6 +482,23 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
 
         {:noreply,
          assign(socket, output_offset: offset + byte_size(text) + 1, output_empty?: false)}
+    end
+  end
+
+  # A stage logging for the first time. Unless a stage was picked by hand,
+  # the page follows the pipeline on to it.
+  defp note_logged(socket, stage_id) do
+    %{stages: stages, stage: current, logged: logged} = socket.assigns
+
+    if MapSet.member?(logged, stage_id) do
+      socket
+    else
+      socket = assign(socket, logged: MapSet.put(logged, stage_id))
+      position = fn id -> Enum.find_index(stages, &(&1.id == id)) end
+
+      if position.(stage_id) > position.(current.id) and not socket.assigns.stage_picked?,
+        do: show_stage(socket, Enum.at(stages, position.(stage_id))),
+        else: socket
     end
   end
 end

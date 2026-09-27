@@ -3,8 +3,8 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
 
   import JaxrlDashboardWeb.RunComponents
 
-  alias JaxrlDashboard.Runs
-  alias JaxrlDashboard.Runs.Settings
+  alias JaxrlDashboard.{Projects, Runs}
+  alias JaxrlDashboard.Projects.Project
 
   @max_compared 8
 
@@ -14,9 +14,12 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Training runs
-        <:subtitle>Runs start one at a time, oldest first.</:subtitle>
+        <:subtitle>Every project shares the GPU: runs start one at a time, oldest first.</:subtitle>
         <:actions>
-          <.link navigate={~p"/configs/new"} class="btn btn-ghost btn-sm">
+          <.link
+            navigate={~p"/configs/new?#{[project: @form[:project].value]}"}
+            class="btn btn-ghost btn-sm"
+          >
             <.icon name="hero-adjustments-horizontal" class="size-4" /> Build a config
           </.link>
         </:actions>
@@ -27,8 +30,14 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
         id="enqueue-form"
         phx-change="validate"
         phx-submit="enqueue"
-        class="grid gap-x-4 rounded-box border border-base-300 bg-base-200/40 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
+        class="grid gap-x-4 rounded-box border border-base-300 bg-base-200/40 p-4 sm:grid-cols-[9rem_1fr_1fr_auto] sm:items-start"
       >
+        <.input
+          field={@form[:project]}
+          type="select"
+          label="Project"
+          options={Enum.map(@projects, &{&1.label, &1.id})}
+        />
         <.input
           field={@form[:config_source]}
           type="select"
@@ -41,6 +50,34 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
           <.icon name="hero-play" class="size-4" /> Queue run
         </.button>
       </.form>
+
+      <nav
+        id="project-filter"
+        class="flex flex-wrap items-center gap-1"
+        aria-label="Filter by project"
+      >
+        <.link
+          :for={{id, label} <- [{nil, "All projects"} | Enum.map(@projects, &{&1.id, &1.label})]}
+          patch={if id, do: ~p"/?#{[project: id]}", else: ~p"/"}
+          id={"filter-#{id || "all"}"}
+          aria-current={@filter == id && "page"}
+          class={[
+            "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors",
+            if(@filter == id,
+              do: "bg-base-content text-base-100",
+              else: "text-base-content/70 hover:bg-base-200 hover:text-base-content"
+            )
+          ]}
+        >
+          {label}
+          <span class={[
+            "text-xs tabular-nums",
+            if(@filter == id, do: "text-base-100/70", else: "text-base-content/50")
+          ]}>
+            {if id, do: Map.get(@counts, id, 0), else: @counts |> Map.values() |> Enum.sum()}
+          </span>
+        </.link>
+      </nav>
 
       <div
         :if={@selected != []}
@@ -78,6 +115,7 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
         <:col :let={{_id, run}} label="Name">
           <span class="font-mono text-sm">{run.name}</span>
         </:col>
+        <:col :let={{_id, run}} label="Project"><.project_badge project={run.project} /></:col>
         <:col :let={{_id, run}} label="Status"><.status_badge run={run} /></:col>
         <:col :let={{_id, run}} label="Config">
           <span class="text-sm text-base-content/70">{run.config_source}</span>
@@ -104,7 +142,7 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
       </.table>
 
       <p :if={@empty?} id="runs-empty" class="py-10 text-center text-base-content/60">
-        No runs yet. Pick a config above to queue one.
+        {if @filter, do: "No #{project_label(@filter)} runs yet.", else: "No runs yet."} Pick a config above to queue one.
       </p>
     </Layouts.app>
     """
@@ -113,19 +151,61 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Runs.subscribe()
-    runs = Runs.list_runs()
 
     {:ok,
-     socket
-     |> assign(page_title: "Runs", config_files: Settings.config_files(), empty?: runs == [])
-     |> assign(form: to_form(Runs.change_run()), selected: [])
-     |> stream(:runs, runs)}
+     assign(socket,
+       page_title: "Runs",
+       projects: Projects.list(),
+       counts: Runs.count_runs_by_project(),
+       filter: nil,
+       selected: []
+     )
+     |> assign_form(Runs.change_run(%{"project" => Projects.default().id}))}
   end
 
+  # `?project=ID` shows only that project's runs, and queues in it by default.
   @impl true
+  def handle_params(params, _uri, socket) do
+    filter = if Projects.get(params["project"]), do: params["project"]
+    runs = Runs.list_runs(project: filter)
+
+    socket =
+      socket
+      |> assign(filter: filter, empty?: runs == [])
+      |> stream(:runs, runs, reset: true)
+
+    # Following a project's tab makes it the one to queue in, unless the
+    # form's already been filled in for another.
+    socket =
+      if filter && blank?(socket.assigns.form[:config_source].value),
+        do: assign_form(socket, Runs.change_run(%{"project" => filter})),
+        else: socket
+
+    {:noreply, socket}
+  end
+
+  defp assign_form(socket, changeset, action \\ nil) do
+    project =
+      Projects.get(Ecto.Changeset.get_field(changeset, :project)) || Projects.default()
+
+    assign(socket,
+      form: to_form(changeset, action: action),
+      config_files: Project.config_files(project)
+    )
+  end
+
+  defp blank?(value), do: value in [nil, ""]
+
+  defp project_label(id), do: Projects.get!(id).label
+
+  @impl true
+  # A different project has different config files: the chosen one is dropped.
+  def handle_event("validate", %{"_target" => ["run", "project"], "run" => params}, socket) do
+    {:noreply, assign_form(socket, Runs.change_run(Map.delete(params, "config_source")))}
+  end
+
   def handle_event("validate", %{"run" => params}, socket) do
-    changeset = Runs.change_run(params)
-    {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
+    {:noreply, assign_form(socket, Runs.change_run(params), :validate)}
   end
 
   def handle_event("enqueue", %{"run" => params}, socket) do
@@ -134,10 +214,10 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
         {:noreply,
          socket
          |> put_flash(:info, "Queued #{run.name}")
-         |> assign(form: to_form(Runs.change_run()))}
+         |> assign_form(Runs.change_run(%{"project" => run.project}))}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, assign_form(socket, changeset)}
     end
   end
 
@@ -186,10 +266,18 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
 
   @impl true
   def handle_info({:run_created, run}, socket) do
-    {:noreply, socket |> assign(empty?: false) |> stream_insert(:runs, run, at: 0)}
+    socket = update(socket, :counts, &Map.update(&1, run.project, 1, fn n -> n + 1 end))
+
+    if socket.assigns.filter in [nil, run.project] do
+      {:noreply, socket |> assign(empty?: false) |> stream_insert(:runs, run, at: 0)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:run_updated, run}, socket) do
-    {:noreply, stream_insert(socket, :runs, run)}
+    if socket.assigns.filter in [nil, run.project],
+      do: {:noreply, stream_insert(socket, :runs, run)},
+      else: {:noreply, socket}
   end
 end

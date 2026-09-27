@@ -43,7 +43,7 @@ defmodule JaxrlDashboard.Runs.Scheduler do
 
     state = check_running_runs(state)
     start_queued_runs()
-    Watcher.reconcile(for run <- Runs.list_running_runs(), run.pid, do: run.name)
+    Watcher.reconcile(for run <- Runs.list_running_runs(), run.pid, do: run)
 
     {:noreply, %{state | timer: Process.send_after(self(), :tick, Settings.get(:poll_interval))}}
   end

@@ -1,0 +1,739 @@
+{
+  "config": {
+    "$defs": {
+      "AdamWConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "beta1": {
+            "default": 0.9,
+            "title": "Beta1",
+            "type": "number"
+          },
+          "beta2": {
+            "default": 0.999,
+            "title": "Beta2",
+            "type": "number"
+          },
+          "eps": {
+            "default": 1.0e-8,
+            "title": "Eps",
+            "type": "number"
+          },
+          "lr": {
+            "title": "Lr",
+            "type": "number"
+          },
+          "type": {
+            "const": "adamw",
+            "default": "adamw",
+            "title": "Type",
+            "type": "string"
+          },
+          "weight_decay": {
+            "default": 0.01,
+            "title": "Weight Decay",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lr"
+        ],
+        "title": "AdamWConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "lr",
+          "beta1",
+          "beta2",
+          "weight_decay",
+          "eps"
+        ]
+      },
+      "ArithmeticEnvConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "max_x": {
+            "title": "Max X",
+            "type": "integer"
+          },
+          "max_y": {
+            "title": "Max Y",
+            "type": "integer"
+          },
+          "name": {
+            "const": "arithmetic",
+            "default": "arithmetic",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "max_x",
+          "max_y"
+        ],
+        "title": "ArithmeticEnvConfig",
+        "type": "object",
+        "x-order": [
+          "name",
+          "max_x",
+          "max_y"
+        ]
+      },
+      "GRPOLossConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "entropy_coef": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entropy Coef"
+          },
+          "pg_clip_high": {
+            "title": "Pg Clip High",
+            "type": "number"
+          },
+          "pg_clip_low": {
+            "title": "Pg Clip Low",
+            "type": "number"
+          },
+          "type": {
+            "const": "grpo",
+            "default": "grpo",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pg_clip_high",
+          "pg_clip_low"
+        ],
+        "title": "GRPOLossConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "pg_clip_high",
+          "pg_clip_low",
+          "entropy_coef"
+        ]
+      },
+      "HlGaussConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "n_logits": {
+            "title": "N Logits",
+            "type": "integer"
+          },
+          "sigma": {
+            "title": "Sigma",
+            "type": "number"
+          },
+          "type": {
+            "const": "hl_gauss",
+            "default": "hl_gauss",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min",
+          "max",
+          "n_logits",
+          "sigma"
+        ],
+        "title": "HlGaussConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "min",
+          "max",
+          "n_logits",
+          "sigma"
+        ]
+      },
+      "LLMConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "embed": {
+            "title": "Embed",
+            "type": "integer"
+          },
+          "head_dim": {
+            "title": "Head Dim",
+            "type": "integer"
+          },
+          "kv_heads": {
+            "title": "Kv Heads",
+            "type": "integer"
+          },
+          "mlp_ffw_size": {
+            "default": -1,
+            "title": "Mlp Ffw Size",
+            "type": "integer"
+          },
+          "norm_eps": {
+            "default": 1.0e-6,
+            "title": "Norm Eps",
+            "type": "number"
+          },
+          "num_layers": {
+            "title": "Num Layers",
+            "type": "integer"
+          },
+          "q_heads": {
+            "title": "Q Heads",
+            "type": "integer"
+          },
+          "rope_theta": {
+            "default": 5.0e5,
+            "title": "Rope Theta",
+            "type": "number"
+          },
+          "vocab_size": {
+            "default": -1,
+            "title": "Vocab Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "embed",
+          "q_heads",
+          "kv_heads",
+          "num_layers",
+          "head_dim"
+        ],
+        "title": "LLMConfig",
+        "type": "object",
+        "x-order": [
+          "embed",
+          "q_heads",
+          "kv_heads",
+          "num_layers",
+          "head_dim",
+          "vocab_size",
+          "mlp_ffw_size",
+          "norm_eps",
+          "rope_theta"
+        ]
+      },
+      "LoggerConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "project_name": {
+            "default": "valm",
+            "title": "Project Name",
+            "type": "string"
+          },
+          "use_console": {
+            "default": true,
+            "title": "Use Console",
+            "type": "boolean"
+          },
+          "use_jsonl": {
+            "default": true,
+            "title": "Use Jsonl",
+            "type": "boolean"
+          },
+          "use_tb": {
+            "default": false,
+            "title": "Use Tb",
+            "type": "boolean"
+          },
+          "use_wandb": {
+            "default": false,
+            "title": "Use Wandb",
+            "type": "boolean"
+          }
+        },
+        "title": "LoggerConfig",
+        "type": "object",
+        "x-order": [
+          "project_name",
+          "use_tb",
+          "use_console",
+          "use_wandb",
+          "use_jsonl"
+        ]
+      },
+      "LoraConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "attn": {
+            "default": false,
+            "title": "Attn",
+            "type": "boolean"
+          },
+          "mlp": {
+            "default": false,
+            "title": "Mlp",
+            "type": "boolean"
+          },
+          "rank": {
+            "default": 0,
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "title": "LoraConfig",
+        "type": "object",
+        "x-order": [
+          "mlp",
+          "attn",
+          "rank"
+        ]
+      },
+      "MseCriticConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "mse",
+            "default": "mse",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "MseCriticConfig",
+        "type": "object",
+        "x-order": [
+          "type"
+        ]
+      },
+      "OptimizerConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "max_grad_norm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Grad Norm"
+          },
+          "opt": {
+            "discriminator": {
+              "mapping": {
+                "adamw": "#/$defs/AdamWConfig",
+                "sgd": "#/$defs/SGDConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AdamWConfig"
+              },
+              {
+                "$ref": "#/$defs/SGDConfig"
+              }
+            ],
+            "title": "Opt"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WarmupCosineConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "opt"
+        ],
+        "title": "OptimizerConfig",
+        "type": "object",
+        "x-order": [
+          "opt",
+          "max_grad_norm",
+          "schedule"
+        ]
+      },
+      "PPOLossConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "decoupled_gae": {
+            "default": false,
+            "title": "Decoupled Gae",
+            "type": "boolean"
+          },
+          "entropy_coef": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entropy Coef"
+          },
+          "gae_discount": {
+            "title": "Gae Discount",
+            "type": "number"
+          },
+          "gae_lambda": {
+            "title": "Gae Lambda",
+            "type": "number"
+          },
+          "is_correction": {
+            "default": true,
+            "title": "Is Correction",
+            "type": "boolean"
+          },
+          "pg_clip_high": {
+            "title": "Pg Clip High",
+            "type": "number"
+          },
+          "pg_clip_low": {
+            "title": "Pg Clip Low",
+            "type": "number"
+          },
+          "turn_discount": {
+            "title": "Turn Discount",
+            "type": "number"
+          },
+          "turn_lambda": {
+            "title": "Turn Lambda",
+            "type": "number"
+          },
+          "type": {
+            "const": "ppo",
+            "default": "ppo",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gae_lambda",
+          "gae_discount",
+          "turn_lambda",
+          "turn_discount",
+          "pg_clip_high",
+          "pg_clip_low"
+        ],
+        "title": "PPOLossConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "gae_lambda",
+          "gae_discount",
+          "turn_lambda",
+          "turn_discount",
+          "pg_clip_high",
+          "pg_clip_low",
+          "entropy_coef",
+          "is_correction",
+          "decoupled_gae"
+        ]
+      },
+      "SGDConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "lr": {
+            "title": "Lr",
+            "type": "number"
+          },
+          "momentum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Momentum"
+          },
+          "nesterov": {
+            "default": false,
+            "title": "Nesterov",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "sgd",
+            "default": "sgd",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lr"
+        ],
+        "title": "SGDConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "lr",
+          "momentum",
+          "nesterov"
+        ]
+      },
+      "ValueConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "backbone": {
+            "$ref": "#/$defs/LLMConfig"
+          },
+          "head": {
+            "discriminator": {
+              "mapping": {
+                "hl_gauss": "#/$defs/HlGaussConfig",
+                "mse": "#/$defs/MseCriticConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/HlGaussConfig"
+              },
+              {
+                "$ref": "#/$defs/MseCriticConfig"
+              }
+            ],
+            "title": "Head"
+          },
+          "last_latent_only": {
+            "default": false,
+            "title": "Last Latent Only",
+            "type": "boolean"
+          },
+          "latent_encoder_rank": {
+            "title": "Latent Encoder Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "latent_encoder_rank",
+          "backbone",
+          "head"
+        ],
+        "title": "ValueConfig",
+        "type": "object",
+        "x-order": [
+          "latent_encoder_rank",
+          "backbone",
+          "last_latent_only",
+          "head"
+        ]
+      },
+      "WarmupCosineConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "const": "warmup_cosine",
+            "default": "warmup_cosine",
+            "title": "Type",
+            "type": "string"
+          },
+          "warmup_ratio": {
+            "default": 0.1,
+            "title": "Warmup Ratio",
+            "type": "number"
+          }
+        },
+        "title": "WarmupCosineConfig",
+        "type": "object",
+        "x-order": [
+          "type",
+          "warmup_ratio"
+        ]
+      },
+      "WordleEnvConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "max_guesses": {
+            "title": "Max Guesses",
+            "type": "integer"
+          },
+          "name": {
+            "const": "wordle",
+            "default": "wordle",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "max_guesses"
+        ],
+        "title": "WordleEnvConfig",
+        "type": "object",
+        "x-order": [
+          "name",
+          "max_guesses"
+        ]
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "base_model": {
+        "title": "Base Model",
+        "type": "string"
+      },
+      "checkpoint_every": {
+        "title": "Checkpoint Every",
+        "type": "integer"
+      },
+      "env": {
+        "discriminator": {
+          "mapping": {
+            "arithmetic": "#/$defs/ArithmeticEnvConfig",
+            "wordle": "#/$defs/WordleEnvConfig"
+          },
+          "propertyName": "name"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ArithmeticEnvConfig"
+          },
+          {
+            "$ref": "#/$defs/WordleEnvConfig"
+          }
+        ],
+        "title": "Env"
+      },
+      "eval_envs": {
+        "title": "Eval Envs",
+        "type": "integer"
+      },
+      "gradient_accumulations": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Gradient Accumulations"
+      },
+      "group_size": {
+        "default": 1,
+        "title": "Group Size",
+        "type": "integer"
+      },
+      "logger": {
+        "$ref": "#/$defs/LoggerConfig"
+      },
+      "lora": {
+        "$ref": "#/$defs/LoraConfig"
+      },
+      "loss": {
+        "discriminator": {
+          "mapping": {
+            "grpo": "#/$defs/GRPOLossConfig",
+            "ppo": "#/$defs/PPOLossConfig"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/PPOLossConfig"
+          },
+          {
+            "$ref": "#/$defs/GRPOLossConfig"
+          }
+        ],
+        "title": "Loss"
+      },
+      "max_seq_length": {
+        "title": "Max Seq Length",
+        "type": "integer"
+      },
+      "policy_optimizer": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/OptimizerConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "seed": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "const": "random",
+            "type": "string"
+          }
+        ],
+        "default": "random",
+        "title": "Seed"
+      },
+      "total_update_episodes": {
+        "title": "Total Update Episodes",
+        "type": "integer"
+      },
+      "update_envs": {
+        "title": "Update Envs",
+        "type": "integer"
+      },
+      "value_net": {
+        "$ref": "#/$defs/ValueConfig"
+      },
+      "value_optimizer": {
+        "$ref": "#/$defs/OptimizerConfig"
+      }
+    },
+    "required": [
+      "base_model",
+      "lora",
+      "value_net",
+      "logger",
+      "value_optimizer",
+      "loss",
+      "env",
+      "eval_envs",
+      "update_envs",
+      "max_seq_length",
+      "total_update_episodes",
+      "checkpoint_every"
+    ],
+    "title": "Config",
+    "type": "object",
+    "x-order": [
+      "seed",
+      "base_model",
+      "lora",
+      "value_net",
+      "logger",
+      "policy_optimizer",
+      "value_optimizer",
+      "loss",
+      "env",
+      "gradient_accumulations",
+      "eval_envs",
+      "update_envs",
+      "max_seq_length",
+      "total_update_episodes",
+      "checkpoint_every",
+      "group_size"
+    ]
+  },
+  "environments": {}
+}

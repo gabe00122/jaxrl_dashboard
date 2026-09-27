@@ -4,7 +4,42 @@ defmodule JaxrlDashboardWeb.RunComponents do
   """
   use Phoenix.Component
 
+  alias JaxrlDashboard.Projects
   alias JaxrlDashboard.Runs.Run
+
+  # Dot colors that stay distinct from each other in both themes. Text stays
+  # in the base color so the label reads the same everywhere.
+  @project_dots ["bg-primary", "bg-info", "bg-success"]
+
+  @doc """
+  The project a run belongs to, as a small tag. Each project gets its own
+  dot color, by its position in the project list.
+  """
+  attr :project, :string, required: true, doc: "a project id"
+  attr :id, :string, default: nil
+
+  def project_badge(assigns) do
+    project = Projects.get(assigns.project)
+    index = Enum.find_index(Projects.list(), &(&1.id == assigns.project)) || 0
+
+    assigns =
+      assign(assigns,
+        label: if(project, do: project.label, else: assigns.project),
+        title: project && project.description,
+        dot: Enum.at(@project_dots, rem(index, length(@project_dots)))
+      )
+
+    ~H"""
+    <span
+      id={@id}
+      title={@title}
+      class="inline-flex items-center gap-1.5 rounded-full border border-base-300 px-2 py-0.5 font-mono text-xs whitespace-nowrap text-base-content/80"
+    >
+      <span class={["size-1.5 shrink-0 rounded-full", @dot]} />
+      {@label}
+    </span>
+    """
+  end
 
   @doc """
   A colored badge for a run's status. Running runs that are being cancelled

@@ -1,5 +1,6 @@
 defmodule JaxrlDashboard.Runs.SchedulerTest do
-  # Runs real processes through run_job.sh and test/support/fake_train.sh.
+  # Runs real processes through run_job.sh and the fake trainers in
+  # test/support (fake_train.sh for jaxrl, fake_pipeline.sh for llm_rl).
   use JaxrlDashboard.DataCase, async: false
 
   import JaxrlDashboard.AccountsFixtures
@@ -17,7 +18,7 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
 
   defp enqueue(scope, fake_config) do
     source = write_config("#{System.unique_integer([:positive])}.json", fake_config)
-    {:ok, run} = Runs.enqueue_run(scope, %{"config_source" => source})
+    {:ok, run} = Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => source})
     run
   end
 
@@ -38,7 +39,7 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
     assert run.finished_at
     assert File.read!(Settings.output_path(run.name)) =~ "training #{run.name} from"
     # jaxrl writes its results into the results dir under the run's name.
-    assert File.exists?(Path.join(Settings.experiment_dir(run.name), "logs.jsonl"))
+    assert File.exists?(Path.join(experiment_dir(run.name), "logs.jsonl"))
   end
 
   test "marks non-zero exits as failed", %{scope: scope} do
@@ -79,7 +80,7 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
   end
 
   test "escalates to SIGKILL when a job ignores SIGTERM", %{scope: scope} do
-    put_run_setting(:train_command, [
+    put_project_setting("jaxrl", :train_command, [
       "bash",
       "-c",
       "trap '' TERM; sleep 60 & wait; sleep 60",
@@ -124,12 +125,34 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
   end
 
   test "a missing training command fails the run without starting anything", %{scope: scope} do
-    put_run_setting(:train_command, [".venv/bin/pmarl", "train"])
+    put_project_setting("jaxrl", :train_command, [".venv/bin/pmarl", "train"])
     run = enqueue(scope, %{})
     start_supervised!(Scheduler)
 
     run = wait_for_status(run, :failed)
     assert run.error =~ "command not found: .venv/bin/pmarl"
     assert run.pid == nil
+  end
+
+  test "runs an llm_rl pipeline from its project's checkout, stage by stage", %{scope: scope} do
+    config = %{"loss" => %{"type" => "ppo"}, "logger" => %{}, "fake_steps" => 2}
+    source = write_config("ppo.json", config, "llm_rl")
+    {:ok, run} = Runs.enqueue_run(scope, %{"project" => "llm_rl", "config_source" => source})
+    start_supervised!(Scheduler)
+
+    run = wait_for_status(run, :succeeded)
+
+    output = File.read!(Settings.output_path(run.name))
+    assert output =~ "stage #{run.name}-value\nstage #{run.name}\n"
+
+    for dir <- ["#{run.name}-value", run.name] do
+      assert File.read!(Path.join(experiment_dir(dir, "llm_rl"), "logs.jsonl")) =~ ~s("step": 1)
+    end
+
+    # The dashboard turned on the log it reads.
+    written =
+      Path.join(Settings.job_dir(run.name), "config.json") |> File.read!() |> Jason.decode!()
+
+    assert written["logger"]["use_jsonl"] == true
   end
 end

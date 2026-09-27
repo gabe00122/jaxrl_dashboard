@@ -60,8 +60,8 @@ defmodule JaxrlDashboardWeb.RunVideosLiveTest do
   end
 
   test "cancels a recording in progress", %{conn: conn} do
-    [bash, script | _] = Application.fetch_env!(:jaxrl_dashboard, :runs)[:record_command]
-    put_run_setting(:record_command, [bash, script, "--fake-sleep", "60"])
+    [bash, script | _] = project("jaxrl").record_command
+    put_project_setting("jaxrl", :record_command, [bash, script, "--fake-sleep", "60"])
     recordable_run_fixture("slow")
     start_supervised!(Recorder)
     {:ok, view, _html} = live(conn, ~p"/runs/slow")
@@ -77,8 +77,8 @@ defmodule JaxrlDashboardWeb.RunVideosLiveTest do
   end
 
   test "shows a failed recording", %{conn: conn} do
-    [bash, script | _] = Application.fetch_env!(:jaxrl_dashboard, :runs)[:record_command]
-    put_run_setting(:record_command, [bash, script, "--fake-exit-code", "1"])
+    [bash, script | _] = project("jaxrl").record_command
+    put_project_setting("jaxrl", :record_command, [bash, script, "--fake-exit-code", "1"])
     recordable_run_fixture("fails")
     start_supervised!(Recorder)
     {:ok, view, _html} = live(conn, ~p"/runs/fails")

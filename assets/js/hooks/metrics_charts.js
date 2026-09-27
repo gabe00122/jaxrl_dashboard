@@ -2,6 +2,10 @@
 // uPlot line chart per metric, grouped by prefix ("algo/...", "env/..."),
 // with a filter, EMA smoothing, a chart/table toggle and per-chart expand.
 //
+// A metric logged as a distribution (llm_rl's `rewards.mean`, `rewards.min`,
+// `rewards.max`, `rewards.std`) gets one chart: the mean as the line, with a
+// min–max band behind it on a run's page.
+//
 // data-mode="single" (a run's page): the run's raw values drawn faint behind
 //   the smoothed line, its latest value in each card, and a shaded band where
 //   it diverged to NaN.
@@ -97,6 +101,39 @@ function splitKey(key) {
   const i = key.indexOf("/")
   return i === -1 ? ["other", key] : [key.slice(0, i), key.slice(i + 1)]
 }
+
+const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+
+// What to chart: one spec per chart, `{id, group, title, value, min, max,
+// std, keys}`. `value` is the series drawn as the line; a distribution's
+// `min`/`max`/`std` are its sibling keys (or null). `keys` lists every
+// metric the chart covers, for the filter.
+function chartSpecs(keys) {
+  const present = new Set(keys)
+  const covered = new Set()
+  const specs = []
+
+  for (const key of keys) {
+    if (!key.endsWith(".mean")) continue
+    const id = key.slice(0, -".mean".length)
+    const stat = (name) => (present.has(`${id}.${name}`) ? `${id}.${name}` : null)
+    const [min, max, std] = [stat("min"), stat("max"), stat("std")]
+    if (!min && !max && !std) continue
+    for (const k of [key, min, max, std]) if (k) covered.add(k)
+    specs.push({ id, value: key, min, max, std })
+  }
+  for (const key of keys) {
+    if (!covered.has(key)) specs.push({ id: key, value: key, min: null, max: null, std: null })
+  }
+
+  return specs.sort(byId).map((spec) => {
+    const [group, title] = splitKey(spec.id)
+    return { ...spec, group, title, keys: [spec.value, spec.min, spec.max, spec.std].filter(Boolean) }
+  })
+}
+
+// A min–max band needs both edges.
+const hasBand = (spec) => spec.min != null && spec.max != null
 
 function el(tag, className, text) {
   const node = document.createElement(tag)
@@ -221,6 +258,8 @@ export default {
   mounted() {
     this.compare = this.el.dataset.mode === "compare"
     this.runs = []
+    // Every metric key when the charts were last built; a new one rebuilds them.
+    this.knownKeys = new Set()
     this.charts = new Map()
     this.expanded = new Set()
     this.filter = ""
@@ -280,7 +319,7 @@ export default {
       for (const key of Object.keys(values)) {
         if (!(key in run.series)) {
           run.series[key] = new Array(index).fill(null)
-          if (!this.charts.has(key)) newKeys = true
+          if (!this.knownKeys.has(key)) newKeys = true
         }
       }
       for (const key of Object.keys(run.series)) run.series[key].push(values[key] ?? null)
@@ -311,6 +350,7 @@ export default {
   render() {
     this.destroyCharts()
     const keys = this.metricKeys()
+    this.knownKeys = new Set(keys)
 
     if (keys.length === 0) {
       const message = this.compare && this.runs.length === 0 ? "Add runs to compare them." : "No metrics logged yet."
@@ -318,7 +358,7 @@ export default {
       return
     }
 
-    const body = this.view === "table" ? this.buildTable(keys) : this.buildChartSections(keys)
+    const body = this.view === "table" ? this.buildTable(keys) : this.buildChartSections(chartSpecs(keys))
     this.el.replaceChildren(this.buildControls(), ...body)
     this.applyFilter()
   },
@@ -382,32 +422,40 @@ export default {
     }
   },
 
-  buildChartSections(keys) {
+  buildChartSections(specs) {
     const groups = new Map()
-    for (const key of keys) {
-      const [group] = splitKey(key)
-      if (!groups.has(group)) groups.set(group, [])
-      groups.get(group).push(key)
+    for (const spec of specs) {
+      if (!groups.has(spec.group)) groups.set(spec.group, [])
+      groups.get(spec.group).push(spec)
     }
+    // Metrics without "group/" prefixes (llm_rl's) are all "other": a
+    // heading saying so would add nothing.
+    const headings = !(groups.size === 1 && groups.has("other"))
 
-    return [...groups].map(([group, groupKeys]) => {
+    return [...groups].map(([group, groupSpecs]) => {
       const grid = el("div", "grid gap-3 sm:grid-cols-2 xl:grid-cols-3")
       const section = el("section", "mb-5 space-y-2")
       section.dataset.group = group
-      section.append(el("h3", "text-xs font-semibold uppercase tracking-wide text-base-content/60", group), grid)
-      for (const key of groupKeys) grid.appendChild(this.buildCard(key))
+      if (headings) section.append(el("h3", "text-xs font-semibold uppercase tracking-wide text-base-content/60", group))
+      section.append(grid)
+      for (const spec of groupSpecs) grid.appendChild(this.buildCard(spec))
       return section
     })
   },
 
-  buildCard(key) {
-    const [, title] = splitKey(key)
+  buildCard(spec) {
     const card = el("div", "rounded-box border border-base-300 bg-base-100 p-3")
-    card.dataset.metric = key
+    // Everything the filter can match: the chart's name and each metric in it.
+    card.dataset.metric = [spec.id, ...spec.keys].join(" ")
 
     const header = el("div", "flex items-center justify-between gap-2")
-    const name = el("h4", "truncate text-xs font-medium text-base-content/70", title)
-    name.title = key
+    const name = el("h4", "flex min-w-0 items-baseline gap-1.5 text-xs font-medium text-base-content/70")
+    name.append(el("span", "truncate", spec.title))
+    if (spec.value !== spec.id) {
+      const shows = !this.compare && hasBand(spec) ? "mean · min–max" : "mean"
+      name.append(el("span", "shrink-0 font-normal text-base-content/45", shows))
+    }
+    name.title = spec.keys.join(", ")
     const right = el("div", "flex shrink-0 items-center gap-1")
     const latest = el("span", "text-sm font-semibold")
     const expand = el("button", "btn btn-ghost btn-xs btn-square text-base-content/60")
@@ -419,13 +467,14 @@ export default {
     const plotEl = el("div", "relative mt-1")
     card.append(header, badges, plotEl)
 
-    const chart = { key, card, latest, badges, plotEl, expand, colors: chromeColors(), nanBand: null }
+    const chart = { key: spec.id, spec, card, latest, badges, plotEl, expand, colors: chromeColors(), nanBand: null }
+    chart.band = !this.compare && hasBand(spec)
     chart.plot = this.createPlot(chart)
     chart.resizeObserver = new ResizeObserver(() => this.resize(chart))
     chart.resizeObserver.observe(plotEl)
     expand.addEventListener("click", () => this.toggleExpanded(chart))
 
-    this.charts.set(key, chart)
+    this.charts.set(spec.id, chart)
     this.applyExpanded(chart)
     this.updateChart(chart)
     return card
@@ -456,12 +505,15 @@ export default {
     }
   },
 
-  // uPlot series layout. Single: [x, raw (faint), smoothed]. Compare: [x, one
-  // smoothed line per run].
-  seriesSpec() {
+  // uPlot series layout. Single: [x, raw (faint), smoothed], led by the band's
+  // [min, max] edges (drawn first, so the band sits behind the lines) when the
+  // chart has one. Compare: [x, one smoothed line per run].
+  seriesSpec(chart) {
     if (!this.compare) {
       const color = seriesColor(0)
+      const edge = (label) => ({ label, stroke: "transparent", width: 0, points: { show: false } })
       return [
+        ...(chart.band ? [edge("min"), edge("max")] : []),
         { label: "raw", stroke: color + "40", width: 1, points: { show: false } },
         { label: "value", stroke: color, width: 2, points: { show: false } },
       ]
@@ -478,7 +530,7 @@ export default {
       ticks: { show: false },
     }
 
-    const series = [{ label: "step" }, ...this.seriesSpec()]
+    const series = [{ label: "step" }, ...this.seriesSpec(chart)]
 
     return new uPlot(
       {
@@ -499,6 +551,8 @@ export default {
           { ...axisStyle, size: 52, values: (u, splits) => splits.map(formatValue) },
         ],
         series,
+        // Fills between max (series 2) and min (series 1).
+        bands: chart.band ? [{ series: [2, 1], fill: seriesColor(0) + "24" }] : [],
         plugins: [nanBandPlugin(chart), tooltipPlugin(chart)],
       },
       series.map(() => []),
@@ -507,14 +561,15 @@ export default {
   },
 
   updateChart(chart) {
-    const { x, ys } = align(this.runs, chart.key)
+    const { spec } = chart
+    const { x, ys } = align(this.runs, spec.value)
     const plot = chart.plot
 
     const previousLastStep = plot.data?.[0]?.length ? plot.data[0][plot.data[0].length - 1] : null
     // Keep the user's zoom when new data arrives; otherwise follow the data.
     const zoomed = previousLastStep != null && plot.scales.x.max != null && plot.scales.x.max < previousLastStep
 
-    const summaries = this.runs.map((run) => (run.nan[chart.key] ? nanSummary(run.nan[chart.key], run.steps) : null))
+    const summaries = this.runs.map((run) => (run.nan[spec.value] ? nanSummary(run.nan[spec.value], run.steps) : null))
 
     if (this.compare) {
       const smoothed = ys.map((values) => smooth(values, this.smoothing))
@@ -526,19 +581,34 @@ export default {
     } else {
       const raw = ys[0] ?? []
       const summary = summaries[0]
-      const nan = this.runs[0]?.nan[chart.key]
+      const nan = this.runs[0]?.nan[spec.value]
       chart.nanBand = summary?.diverged ? { from: nan.first, to: x[x.length - 1] } : null
 
       const smoothed = smooth(raw, this.smoothing)
-      plot.setData([x, this.smoothing > 0 ? raw : new Array(raw.length).fill(null), smoothed], !zoomed)
+      const stat = (key) => (key ? (align(this.runs, key).ys[0] ?? []) : [])
+      const [min, max, std] = [stat(spec.min), stat(spec.max), stat(spec.std)]
+      // The band is smoothed like the line, or it'd be noise around a calm line.
+      const edges = chart.band ? [smooth(min, this.smoothing), smooth(max, this.smoothing)] : []
+      plot.setData([x, ...edges, this.smoothing > 0 ? raw : new Array(raw.length).fill(null), smoothed], !zoomed)
 
       const color = seriesColor(0)
+      // A distribution's raw stats at the step, after the mean.
+      const statRows = (i) =>
+        [["min", min], ["max", max], ["std", std]]
+          .filter(([, values]) => values.length > 0)
+          .map(([label, values]) => valueRow(formatValue(values[i]), label, color, true))
+
       chart.tooltipRows = (i) => {
         if (raw[i] == null && nan && x[i] >= nan.first && x[i] <= nan.last) return [el("div", "font-semibold", "NaN / Inf")]
+        const mean = spec.value !== spec.id ? "mean" : null
         if (this.smoothing > 0) {
-          return [valueRow(formatValue(smoothed[i]), "smoothed", color), valueRow(formatValue(raw[i]), "raw", color, true)]
+          return [
+            valueRow(formatValue(smoothed[i]), mean ? "mean, smoothed" : "smoothed", color),
+            valueRow(formatValue(raw[i]), mean ? "mean" : "raw", color, true),
+            ...statRows(i),
+          ]
         }
-        return [valueRow(formatValue(raw[i]), "value", color)]
+        return [valueRow(formatValue(raw[i]), mean ?? "value", color), ...statRows(i)]
       }
       // A diverged metric's current value is NaN, not its last finite value.
       chart.latest.textContent = summary?.diverged ? "NaN" : formatValue(lastValue(raw))

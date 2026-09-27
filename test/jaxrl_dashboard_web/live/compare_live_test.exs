@@ -5,7 +5,6 @@ defmodule JaxrlDashboardWeb.CompareLiveTest do
   import JaxrlDashboard.RunsFixtures
 
   alias JaxrlDashboard.{Metrics, Runs}
-  alias JaxrlDashboard.Runs.Settings
 
   setup :setup_run_dirs
 
@@ -19,7 +18,7 @@ defmodule JaxrlDashboardWeb.CompareLiveTest do
     setup do
       # Three imported runs with a couple of metric rows each.
       for {name, losses} <- [{"alpha", [1.0, 0.5]}, {"beta", [2.0, 1.5]}, {"gamma", [3.0]}] do
-        dir = Settings.experiment_dir(name)
+        dir = experiment_dir(name)
         File.mkdir_p!(dir)
         File.write!(Path.join(dir, "config.json"), "{}")
 
@@ -28,7 +27,7 @@ defmodule JaxrlDashboardWeb.CompareLiveTest do
           |> Enum.with_index()
           |> Enum.map_join(fn {loss, step} -> ~s({"step": #{step}, "loss": #{loss}}\n) end)
 
-        File.write!(Metrics.path(name), rows)
+        File.write!(Metrics.path(dir), rows)
       end
 
       Runs.import_existing_runs()
@@ -70,10 +69,47 @@ defmodule JaxrlDashboardWeb.CompareLiveTest do
       # New rows for a compared run are pushed, tagged with the run.
       Runs.broadcast_run(
         "alpha",
-        {:metrics, "alpha", [%{step: 2, values: %{"loss" => 0.2}, nan: []}]}
+        {:metrics, "alpha", "train", [%{step: 2, values: %{"loss" => 0.2}, nan: []}]}
       )
 
       assert_push_event(view, "metrics_append", %{run: "alpha", rows: [%{step: 2}]})
+    end
+
+    test "compares a pipeline run by its main stage", %{conn: conn, user: user} do
+      write_config("ppo.json", %{"loss" => %{"type" => "ppo"}, "logger" => %{}}, "llm_rl")
+
+      {:ok, _} =
+        Runs.enqueue_run(JaxrlDashboard.Accounts.Scope.for_user(user), %{
+          "project" => "llm_rl",
+          "config_source" => "ppo.json",
+          "name" => "piped"
+        })
+
+      for {dir, key} <- [{"piped-value", "value_loss.mean"}, {"piped", "rewards.mean"}] do
+        File.mkdir_p!(experiment_dir(dir, "llm_rl"))
+        File.write!(Metrics.path(experiment_dir(dir, "llm_rl")), ~s({"step": 0, "#{key}": 1.0}\n))
+      end
+
+      {:ok, view, _html} = live(conn, ~p"/compare?runs=alpha,piped")
+      assert has_element?(view, "#compare-run-piped", "llm_rl")
+
+      view |> element("#metrics") |> render_hook("load_metrics", %{})
+
+      assert_reply(view, %{
+        runs: [%{name: "alpha"}, %{name: "piped", series: %{"rewards.mean" => [1.0]} = series}]
+      })
+
+      refute Map.has_key?(series, "value_loss.mean")
+
+      # Only the main stage's new rows are pushed.
+      Runs.broadcast_run(
+        "piped",
+        {:metrics, "piped", "value", [%{step: 1, values: %{}, nan: []}]}
+      )
+
+      refute_push_event(view, "metrics_append", _)
+      Runs.broadcast_run("piped", {:metrics, "piped", "rl", [%{step: 1, values: %{}, nan: []}]})
+      assert_push_event(view, "metrics_append", %{run: "piped", rows: [%{step: 1}]})
     end
 
     test "removing a run keeps the others' colors and reloads the charts", %{conn: conn} do
@@ -103,8 +139,8 @@ defmodule JaxrlDashboardWeb.CompareLiveTest do
       names = for i <- 1..9, do: "extra-#{i}"
 
       for name <- names do
-        File.mkdir_p!(Settings.experiment_dir(name))
-        File.write!(Path.join(Settings.experiment_dir(name), "config.json"), "{}")
+        File.mkdir_p!(experiment_dir(name))
+        File.write!(Path.join(experiment_dir(name), "config.json"), "{}")
       end
 
       Runs.import_existing_runs()

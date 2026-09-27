@@ -1,14 +1,15 @@
 defmodule JaxrlDashboard.Configs.Schema do
   @moduledoc """
-  Reads the JSON Schema of jaxrl's `Config` (exported from its Pydantic models)
-  to drive the config builder: what editor each value needs, what a newly
-  added value looks like, and how form input turns into typed JSON.
+  Reads the JSON Schema of a project's `Config` (exported from its Pydantic
+  models) to drive the config builder: what editor each value needs, what a
+  newly added value looks like, and how form input turns into typed JSON.
 
   A node is `{schema, root}`, where `root` is the document the node's `$ref`s
-  resolve against. The `environment` field is open in the Config schema
-  (`EnvironmentConfig` accepts any keys), so it's dispatched on `env_type` to
-  the schema of the model that environment registered with mapox, the same
-  way `EnvironmentFactory` validates it.
+  resolve against. In jaxrl, the `environment` field is open in the Config
+  schema (`EnvironmentConfig` accepts any keys), so it's dispatched on
+  `env_type` to the schema of the model that environment registered with
+  mapox, the same way `EnvironmentFactory` validates it. Projects without
+  such a field (llm_rl) have no `environments`.
   """
 
   defstruct [:config, :environments]

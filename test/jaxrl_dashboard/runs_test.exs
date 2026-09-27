@@ -6,7 +6,12 @@ defmodule JaxrlDashboard.RunsTest do
 
   alias JaxrlDashboard.Accounts.Scope
   alias JaxrlDashboard.Runs
-  alias JaxrlDashboard.Runs.{Run, Settings}
+  alias JaxrlDashboard.Runs.Run
+
+  # A minimal llm_rl config: enough for its stages and logging to be read.
+  @llm_rl_config %{"loss" => %{"type" => "grpo"}, "logger" => %{"use_jsonl" => true}}
+
+  defp ppo_config, do: put_in(@llm_rl_config, ~w(loss type), "ppo")
 
   setup :setup_run_dirs
 
@@ -19,7 +24,11 @@ defmodule JaxrlDashboard.RunsTest do
       write_config("Best_Jax 6L.json", %{"seed" => 7})
       Runs.subscribe()
 
-      assert {:ok, run} = Runs.enqueue_run(scope, %{"config_source" => "Best_Jax 6L.json"})
+      assert {:ok, run} =
+               Runs.enqueue_run(scope, %{
+                 "project" => "jaxrl",
+                 "config_source" => "Best_Jax 6L.json"
+               })
 
       assert run.status == :queued
       assert run.config == %{"seed" => 7}
@@ -33,41 +42,61 @@ defmodule JaxrlDashboard.RunsTest do
       write_config("a.json")
 
       assert {:ok, %Run{name: "my_run-2"}} =
-               Runs.enqueue_run(scope, %{"config_source" => "a.json", "name" => "my_run-2"})
+               Runs.enqueue_run(scope, %{
+                 "project" => "jaxrl",
+                 "config_source" => "a.json",
+                 "name" => "my_run-2"
+               })
     end
 
     test "only accepts files from the config directory", %{scope: scope} do
       for source <- ["missing.json", "../config/a.json", "/etc/passwd"] do
-        assert {:error, changeset} = Runs.enqueue_run(scope, %{"config_source" => source})
+        assert {:error, changeset} =
+                 Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => source})
 
-        assert "is not a config file in the jaxrl config directory" in errors_on(changeset).config_source
+        assert "is not a config file in jaxrl's config directory" in errors_on(changeset).config_source
       end
     end
 
     test "rejects configs that aren't a JSON object", %{scope: scope} do
-      File.write!(Path.join(Settings.config_dir(), "broken.json"), "{not json")
-      File.write!(Path.join(Settings.config_dir(), "list.json"), "[1, 2]")
+      File.write!(Path.join(config_dir(), "broken.json"), "{not json")
+      File.write!(Path.join(config_dir(), "list.json"), "[1, 2]")
 
-      assert {:error, cs} = Runs.enqueue_run(scope, %{"config_source" => "broken.json"})
+      assert {:error, cs} =
+               Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "broken.json"})
+
       assert "is not valid JSON" in errors_on(cs).config_source
-      assert {:error, cs} = Runs.enqueue_run(scope, %{"config_source" => "list.json"})
+
+      assert {:error, cs} =
+               Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "list.json"})
+
       assert "is not a JSON object" in errors_on(cs).config_source
     end
 
     test "rejects unsafe or taken names", %{scope: scope} do
       write_config("a.json")
-      File.mkdir_p!(Settings.experiment_dir("old-run"))
-      {:ok, _} = Runs.enqueue_run(scope, %{"config_source" => "a.json", "name" => "taken"})
+      File.mkdir_p!(experiment_dir("old-run"))
+
+      {:ok, _} =
+        Runs.enqueue_run(scope, %{
+          "project" => "jaxrl",
+          "config_source" => "a.json",
+          "name" => "taken"
+        })
 
       for {name, error} <- [
             {"../escape", "use lowercase letters, digits, dashes and underscores"},
             {"Has Space", "use lowercase letters, digits, dashes and underscores"},
             {"--flag", "use lowercase letters, digits, dashes and underscores"},
-            {"old-run", "already exists in the jaxrl results directory"},
+            {"old-run", "already exists in jaxrl's results directory"},
             {"taken", "has already been taken"}
           ] do
         assert {:error, cs} =
-                 Runs.enqueue_run(scope, %{"config_source" => "a.json", "name" => name})
+                 Runs.enqueue_run(scope, %{
+                   "project" => "jaxrl",
+                   "config_source" => "a.json",
+                   "name" => name
+                 })
 
         assert error in errors_on(cs).name, "expected #{inspect(name)} to be rejected"
       end
@@ -86,7 +115,8 @@ defmodule JaxrlDashboard.RunsTest do
           []
       end)
 
-      assert {:error, changeset} = Runs.enqueue_run(scope, %{"config_source" => "stale.json"})
+      assert {:error, changeset} =
+               Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "stale.json"})
 
       assert [message] = errors_on(changeset).config_source
       assert message == "is invalid: learner.trainer.vf_clip: Extra inputs are not permitted"
@@ -95,6 +125,7 @@ defmodule JaxrlDashboard.RunsTest do
     test "enqueue_config_run queues a built config", %{scope: scope} do
       assert {:ok, run} =
                Runs.enqueue_config_run(scope, %{
+                 "project" => "jaxrl",
                  "config" => %{"seed" => 5},
                  "config_source" => "best.json (edited)"
                })
@@ -106,7 +137,7 @@ defmodule JaxrlDashboard.RunsTest do
 
     test "enqueue_config_run names configs without a source 'custom'", %{scope: scope} do
       assert {:ok, %Run{name: "custom-" <> _}} =
-               Runs.enqueue_config_run(scope, %{"config" => %{}})
+               Runs.enqueue_config_run(scope, %{"project" => "jaxrl", "config" => %{}})
     end
 
     test "enqueue_config_run refuses invalid configs", %{scope: scope} do
@@ -114,7 +145,12 @@ defmodule JaxrlDashboard.RunsTest do
         [%{path: ["seed"], message: "bad"}, %{path: ["max_env_steps"], message: "Field required"}]
       end)
 
-      assert {:error, changeset} = Runs.enqueue_config_run(scope, %{"config" => %{"seed" => "?"}})
+      assert {:error, changeset} =
+               Runs.enqueue_config_run(scope, %{
+                 "project" => "jaxrl",
+                 "config" => %{"seed" => "?"}
+               })
+
       assert errors_on(changeset).config == ["is invalid: seed: bad (and 1 more)"]
     end
   end
@@ -122,7 +158,7 @@ defmodule JaxrlDashboard.RunsTest do
   describe "cancel_run/1" do
     test "cancels a queued run immediately", %{scope: scope} do
       write_config("a.json")
-      {:ok, run} = Runs.enqueue_run(scope, %{"config_source" => "a.json"})
+      {:ok, run} = Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "a.json"})
 
       assert {:ok, %Run{status: :cancelled, finished_at: %DateTime{}}} = Runs.cancel_run(run)
       assert Runs.claim_next_queued_run() == nil
@@ -130,7 +166,7 @@ defmodule JaxrlDashboard.RunsTest do
 
     test "refuses finished runs", %{scope: scope} do
       write_config("a.json")
-      {:ok, run} = Runs.enqueue_run(scope, %{"config_source" => "a.json"})
+      {:ok, run} = Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "a.json"})
       {:ok, run} = Runs.cancel_run(run)
 
       assert Runs.cancel_run(run) == {:error, :already_finished}
@@ -139,8 +175,8 @@ defmodule JaxrlDashboard.RunsTest do
 
   test "claim_next_queued_run/0 takes the oldest run first", %{scope: scope} do
     write_config("a.json")
-    {:ok, first} = Runs.enqueue_run(scope, %{"config_source" => "a.json"})
-    {:ok, second} = Runs.enqueue_run(scope, %{"config_source" => "a.json"})
+    {:ok, first} = Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "a.json"})
+    {:ok, second} = Runs.enqueue_run(scope, %{"project" => "jaxrl", "config_source" => "a.json"})
 
     assert %Run{id: id, status: :running, started_at: %DateTime{}} = Runs.claim_next_queued_run()
     assert id == first.id
@@ -150,7 +186,7 @@ defmodule JaxrlDashboard.RunsTest do
 
   describe "import_existing_runs/0" do
     defp make_result_dir(name, files) do
-      dir = Settings.experiment_dir(name)
+      dir = experiment_dir(name)
       File.mkdir_p!(dir)
       for {file, contents} <- files, do: File.write!(Path.join(dir, file), contents)
       dir
@@ -186,11 +222,18 @@ defmodule JaxrlDashboard.RunsTest do
       make_result_dir("no-config", %{"logs.jsonl" => ""})
       make_result_dir("Bad Name", %{"config.json" => "{}"})
       make_result_dir("broken", %{"config.json" => "{nope"})
-      File.write!(Path.join(Settings.results_dir(), "README.md"), "hi")
+      File.write!(Path.join(results_dir(), "README.md"), "hi")
 
       # A dashboard run's results dir must not be imported a second time.
       write_config("a.json")
-      {:ok, _} = Runs.enqueue_run(scope, %{"config_source" => "a.json", "name" => "mine"})
+
+      {:ok, _} =
+        Runs.enqueue_run(scope, %{
+          "project" => "jaxrl",
+          "config_source" => "a.json",
+          "name" => "mine"
+        })
+
       make_result_dir("mine", %{"config.json" => "{}"})
 
       assert {["run-a"], skipped} = Runs.import_existing_runs()
@@ -205,6 +248,123 @@ defmodule JaxrlDashboard.RunsTest do
 
       assert Runs.cancel_run(Runs.get_run_by_name!("done")) == {:error, :already_finished}
       assert Runs.claim_next_queued_run() == nil
+    end
+  end
+
+  describe "projects" do
+    test "a run must be in a known project", %{scope: scope} do
+      write_config("a.json")
+
+      assert {:error, cs} = Runs.enqueue_run(scope, %{"config_source" => "a.json"})
+      assert "can't be blank" in errors_on(cs).project
+
+      assert {:error, cs} =
+               Runs.enqueue_run(scope, %{"project" => "nope", "config_source" => "a.json"})
+
+      assert "is not a known project" in errors_on(cs).project
+
+      assert {:error, cs} =
+               Runs.enqueue_config_run(scope, %{"project" => "nope", "config" => %{}})
+
+      assert "is not a known project" in errors_on(cs).project
+    end
+
+    test "config files come from the run's own project", %{scope: scope} do
+      write_config("only_jaxrl.json")
+      write_config("grpo.json", @llm_rl_config, "llm_rl")
+
+      assert {:error, cs} =
+               Runs.enqueue_run(scope, %{
+                 "project" => "llm_rl",
+                 "config_source" => "only_jaxrl.json"
+               })
+
+      assert "is not a config file in llm_rl's config directory" in errors_on(cs).config_source
+
+      assert {:ok, run} =
+               Runs.enqueue_run(scope, %{"project" => "llm_rl", "config_source" => "grpo.json"})
+
+      assert run.project == "llm_rl"
+      assert run.name =~ ~r/^grpo-/
+    end
+
+    test "llm_rl configs are queued with the logging the dashboard reads", %{scope: scope} do
+      config = put_in(@llm_rl_config, ~w(logger), %{"use_jsonl" => false, "use_tui" => true})
+      write_config("quiet.json", config, "llm_rl")
+
+      {:ok, run} =
+        Runs.enqueue_run(scope, %{"project" => "llm_rl", "config_source" => "quiet.json"})
+
+      assert run.config["logger"] == %{"use_jsonl" => true, "use_tui" => false}
+
+      {:ok, run} = Runs.enqueue_config_run(scope, %{"project" => "llm_rl", "config" => config})
+      assert run.config["logger"] == %{"use_jsonl" => true, "use_tui" => false}
+    end
+
+    test "names that would reuse a stage's results dir are taken", %{scope: scope} do
+      write_config("ppo.json", ppo_config(), "llm_rl")
+      write_config("grpo.json", @llm_rl_config, "llm_rl")
+      File.mkdir_p!(experiment_dir("again-value", "llm_rl"))
+
+      # A PPO run writes its value warmup stage to NAME-value.
+      assert {:error, cs} =
+               Runs.enqueue_run(scope, %{
+                 "project" => "llm_rl",
+                 "config_source" => "ppo.json",
+                 "name" => "again"
+               })
+
+      assert "would write to again-value, which already exists in llm_rl's results directory" in errors_on(
+               cs
+             ).name
+
+      assert {:error, cs} =
+               Runs.enqueue_config_run(scope, %{
+                 "project" => "llm_rl",
+                 "config" => ppo_config(),
+                 "name" => "again"
+               })
+
+      assert errors_on(cs).name != []
+
+      # GRPO has no value stage.
+      assert {:ok, _} =
+               Runs.enqueue_run(scope, %{
+                 "project" => "llm_rl",
+                 "config_source" => "grpo.json",
+                 "name" => "again"
+               })
+    end
+
+    test "imports every project's runs, but not a known run's stages", %{scope: scope} do
+      for {project, name} <- [{"jaxrl", "grid-run"}, {"llm_rl", "llm-run"}] do
+        File.mkdir_p!(experiment_dir(name, project))
+        File.write!(Path.join(experiment_dir(name, project), "config.json"), "{}")
+      end
+
+      # The dashboard's own PPO run: its value stage belongs to it.
+      write_config("ppo.json", ppo_config(), "llm_rl")
+
+      {:ok, _} =
+        Runs.enqueue_run(scope, %{
+          "project" => "llm_rl",
+          "config_source" => "ppo.json",
+          "name" => "mine"
+        })
+
+      for dir <- ["mine", "mine-value"] do
+        File.mkdir_p!(experiment_dir(dir, "llm_rl"))
+        File.write!(Path.join(experiment_dir(dir, "llm_rl"), "config.json"), "{}")
+      end
+
+      assert {["grid-run", "llm-run"], []} = Runs.import_existing_runs()
+      assert Runs.get_run_by_name!("grid-run").project == "jaxrl"
+      assert Runs.get_run_by_name!("llm-run").project == "llm_rl"
+
+      assert Runs.count_runs_by_project() == %{"jaxrl" => 1, "llm_rl" => 2}
+
+      assert ["llm-run", "mine"] =
+               Runs.list_runs(project: "llm_rl") |> Enum.map(& &1.name) |> Enum.sort()
     end
   end
 end

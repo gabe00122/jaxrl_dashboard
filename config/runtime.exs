@@ -41,11 +41,24 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
-  if jaxrl_dir = System.get_env("JAXRL_DIR") do
-    config :jaxrl_dashboard, :runs,
-      project_dir: jaxrl_dir,
-      config_dir: Path.join(jaxrl_dir, "config"),
-      results_dir: Path.join(jaxrl_dir, "results")
+  # Where each project's checkout lives. Keyword config is deep-merged, so
+  # these only replace the paths.
+  if dir = System.get_env("JAXRL_DIR") do
+    config :jaxrl_dashboard, :projects,
+      jaxrl: [
+        dir: dir,
+        config_dir: Path.join(dir, "config"),
+        results_dir: Path.join(dir, "results")
+      ]
+  end
+
+  if dir = System.get_env("LLM_RL_DIR") do
+    config :jaxrl_dashboard, :projects,
+      llm_rl: [
+        dir: dir,
+        config_dir: Path.join(dir, "configs"),
+        results_dir: Path.join(dir, "results")
+      ]
   end
 
   if data_dir = System.get_env("RUNS_DATA_DIR") do

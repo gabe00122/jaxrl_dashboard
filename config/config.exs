@@ -11,31 +11,55 @@ config :jaxrl_dashboard,
   ecto_repos: [JaxrlDashboard.Repo],
   generators: [timestamp_type: :utc_datetime]
 
-# Where the jaxrl project lives and how training runs are launched.
-# `train_command` is resolved relative to `project_dir`; the dashboard appends
-# `--config`, `--base-dir` and `--name`. Calling the venv directly (rather
-# than `uv run`) avoids uv re-syncing the environment and dropping the CUDA extra.
-jaxrl_dir = Path.expand("../../jaxrl", __DIR__)
-
 config :jaxrl_dashboard, :config_validator, JaxrlDashboard.Configs.PythonValidator
 
+# The training projects the dashboard runs, in the order they're listed in the
+# UI. Each is a checkout next to this one with its own venv; `adapter` knows
+# how that project is launched and where its runs write their results.
+# Commands are resolved relative to `dir`. Calling the venv directly (rather
+# than `uv run`) avoids uv re-syncing the environment and dropping the CUDA
+# extra. Projects are keyed by id, which is stored with each run: never
+# rename one that has runs.
+jaxrl_dir = Path.expand("../../jaxrl", __DIR__)
+llm_rl_dir = Path.expand("../../llm_rl", __DIR__)
+
+config :jaxrl_dashboard, :projects,
+  jaxrl: [
+    label: "jaxrl",
+    description: "Multi-agent gridworld RL",
+    adapter: JaxrlDashboard.Projects.Jaxrl,
+    dir: jaxrl_dir,
+    config_dir: Path.join(jaxrl_dir, "config"),
+    results_dir: Path.join(jaxrl_dir, "results"),
+    # Used to validate configs against the project's Pydantic models.
+    python: ".venv/bin/python",
+    # The dashboard appends `--config`, `--base-dir` and `--name`.
+    train_command: [".venv/bin/pmarl", "train"],
+    # `pmarl record` renders policy videos; the dashboard appends the run
+    # name, `--base-dir` and `--out-dir`.
+    record_command: [".venv/bin/pmarl", "record"],
+    # Recordings share the GPU with training, so JAX mustn't grab most of its
+    # memory up front.
+    record_env: [{"XLA_PYTHON_CLIENT_PREALLOCATE", "false"}]
+  ],
+  llm_rl: [
+    label: "llm_rl",
+    description: "LLM finetuning with value approximation (valm)",
+    adapter: JaxrlDashboard.Projects.LlmRl,
+    dir: llm_rl_dir,
+    config_dir: Path.join(llm_rl_dir, "configs"),
+    results_dir: Path.join(llm_rl_dir, "results"),
+    python: ".venv/bin/python",
+    # The dashboard appends the config path, `--run-id` and `--base-dir`.
+    # PPO configs go through offline data and value warmup stages first.
+    train_command: [".venv/bin/valm", "pipeline"]
+  ]
+
 config :jaxrl_dashboard, :runs,
-  project_dir: jaxrl_dir,
-  config_dir: Path.join(jaxrl_dir, "config"),
-  results_dir: Path.join(jaxrl_dir, "results"),
   # Dashboard-owned per-run files: input config, output log, pid, exit code.
   data_dir: Path.expand("../var/runs", __DIR__),
-  train_command: [".venv/bin/pmarl", "train"],
-  # `pmarl record` renders policy videos; the dashboard appends the run name,
-  # `--base-dir` and `--out-dir`.
-  record_command: [".venv/bin/pmarl", "record"],
-  # Recordings share the GPU with training, so JAX mustn't grab most of its
-  # memory up front.
-  record_env: [{"XLA_PYTHON_CLIENT_PREALLOCATE", "false"}],
   max_concurrent_recordings: 1,
-  # jaxrl's Python, used to validate configs against its Pydantic models.
-  python: ".venv/bin/python",
-  # One GPU, so one training run at a time.
+  # One GPU shared by every project, so one training run at a time.
   max_concurrent: 1,
   poll_interval: 1_000,
   # How often a running run's logs.jsonl and output.log are checked for new lines.

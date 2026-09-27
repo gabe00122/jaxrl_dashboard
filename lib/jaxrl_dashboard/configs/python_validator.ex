@@ -1,9 +1,11 @@
 defmodule JaxrlDashboard.Configs.PythonValidator do
   @moduledoc """
-  Runs `priv/python/config_validator.py` with the jaxrl project's Python and
-  keeps it running, since importing jaxrl's config models (and with them JAX)
-  takes a moment. Requests are answered in order over a length-prefixed JSON
-  pipe; the process is started on first use and again if it dies.
+  Runs a project's validator script (`priv/python/<project>_config_validator.py`,
+  see `c:JaxrlDashboard.Projects.Adapter.validator_script/0`) with that
+  project's Python and keeps it running, since importing the config models
+  (and, for jaxrl, JAX) takes a moment. There's one of these per project.
+  Requests are answered in order over a length-prefixed JSON pipe; the
+  process is started on first use and again if it dies.
   """
 
   @behaviour JaxrlDashboard.Configs.Validator
@@ -11,44 +13,55 @@ defmodule JaxrlDashboard.Configs.PythonValidator do
   use GenServer
   require Logger
 
-  alias JaxrlDashboard.Runs.Settings
+  alias JaxrlDashboard.Projects
+  alias JaxrlDashboard.Projects.Project
 
+  @registry JaxrlDashboard.Configs.ValidatorRegistry
   @call_timeout 20_000
 
-  def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+  @doc "A child spec per project, for the application supervisor."
+  def child_specs do
+    [{Registry, keys: :unique, name: @registry}] ++
+      for id <- Projects.ids(), do: Supervisor.child_spec({__MODULE__, id}, id: {__MODULE__, id})
+  end
+
+  def start_link(project_id),
+    do: GenServer.start_link(__MODULE__, project_id, name: via(project_id))
+
+  defp via(project_id), do: {:via, Registry, {@registry, project_id}}
 
   @impl JaxrlDashboard.Configs.Validator
-  def schema do
-    with {:ok, response} <- request(%{cmd: "schema"}) do
+  def schema(%Project{} = project) do
+    with {:ok, response} <- request(project, %{cmd: "schema"}) do
       {:ok, Map.take(response, ["config", "environments"])}
     end
   end
 
   @impl JaxrlDashboard.Configs.Validator
-  def validate(config) do
-    with {:ok, %{"errors" => errors}} <- request(%{cmd: "validate", config: config}) do
+  def validate(%Project{} = project, config) do
+    with {:ok, %{"errors" => errors}} <- request(project, %{cmd: "validate", config: config}) do
       {:ok, Enum.map(errors, &%{path: &1["loc"], message: &1["msg"]})}
     end
   end
 
   @impl JaxrlDashboard.Configs.Validator
-  def format(config) do
-    with {:ok, %{"json" => json}} <- request(%{cmd: "format", config: config}) do
+  def format(%Project{} = project, config) do
+    with {:ok, %{"json" => json}} <- request(project, %{cmd: "format", config: config}) do
       {:ok, json}
     end
   end
 
-  defp request(request) do
-    GenServer.call(__MODULE__, {:request, request}, @call_timeout)
+  defp request(%Project{id: id}, request) do
+    GenServer.call(via(id), {:request, request}, @call_timeout)
   catch
     :exit, {:timeout, _} -> {:error, "the config validator didn't answer in time"}
     :exit, {:noproc, _} -> {:error, "the config validator isn't running"}
   end
 
   @impl GenServer
-  def init(nil) do
-    # The schema can't change while the jaxrl code is loaded, so it's cached.
-    {:ok, %{port: nil, waiting: :queue.new(), schema: nil}}
+  def init(project_id) do
+    # The schema can't change while the project's code is loaded, so it's cached.
+    {:ok, %{project_id: project_id, port: nil, waiting: :queue.new(), schema: nil}}
   end
 
   @impl GenServer
@@ -79,14 +92,14 @@ defmodule JaxrlDashboard.Configs.PythonValidator do
         {:noreply, if(cmd == "schema", do: %{state | schema: response}, else: state)}
 
       %{"error" => error} ->
-        Logger.error("Config validator error: #{error}")
+        Logger.error("Config validator error (#{state.project_id}): #{error}")
         GenServer.reply(from, {:error, "the config validator failed: #{last_line(error)}"})
         {:noreply, state}
     end
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.error("Config validator exited with status #{status}")
+    Logger.error("Config validator for #{state.project_id} exited with status #{status}")
 
     for {from, _cmd} <- :queue.to_list(state.waiting) do
       GenServer.reply(from, {:error, "the config validator exited (status #{status})"})
@@ -98,8 +111,14 @@ defmodule JaxrlDashboard.Configs.PythonValidator do
   defp ensure_port(%{port: port} = state) when port != nil, do: {:ok, state}
 
   defp ensure_port(state) do
-    python = Path.expand(Settings.get(:python), Settings.project_dir())
-    script = Application.app_dir(:jaxrl_dashboard, "priv/python/config_validator.py")
+    project = Projects.get!(state.project_id)
+    python = Project.python_path(project)
+
+    script =
+      Application.app_dir(
+        :jaxrl_dashboard,
+        Path.join("priv/python", project.adapter.validator_script())
+      )
 
     if File.exists?(python) do
       port =
@@ -108,13 +127,14 @@ defmodule JaxrlDashboard.Configs.PythonValidator do
           :exit_status,
           packet: 4,
           args: [script],
-          cd: Settings.project_dir(),
-          env: [{~c"JAX_PLATFORMS", ~c"cpu"}]
+          cd: project.dir,
+          # No __pycache__ in priv/ for the shared validator_server module.
+          env: [{~c"JAX_PLATFORMS", ~c"cpu"}, {~c"PYTHONDONTWRITEBYTECODE", ~c"1"}]
         ])
 
       {:ok, %{state | port: port}}
     else
-      {:error, "jaxrl's Python wasn't found at #{python}"}
+      {:error, "#{project.label}'s Python wasn't found at #{python}"}
     end
   end
 

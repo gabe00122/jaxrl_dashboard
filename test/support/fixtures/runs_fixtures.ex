@@ -1,37 +1,52 @@
 defmodule JaxrlDashboard.RunsFixtures do
   @moduledoc """
-  Points the run settings at a fresh temp directory with its own config,
-  results and data dirs. Changes global app config, so tests using it must
-  not be async.
+  Points every project at its own fresh temp checkout (config and results
+  dirs), and the dashboard's run data at a temp dir too. Changes global app
+  config, so tests using it must not be async.
+
+  Helpers that take a project default to jaxrl, the project most tests use.
   """
 
   import ExUnit.Callbacks
 
-  alias JaxrlDashboard.Runs.Settings
+  alias JaxrlDashboard.Projects
+  alias JaxrlDashboard.Projects.Project
 
   def setup_run_dirs(_context \\ %{}) do
     root =
       Path.join(System.tmp_dir!(), "jaxrl_dashboard_test_#{System.unique_integer([:positive])}")
 
-    dirs = [
-      project_dir: root,
-      config_dir: Path.join(root, "config"),
-      results_dir: Path.join(root, "results"),
-      data_dir: Path.join(root, "data")
-    ]
+    original_projects = Application.fetch_env!(:jaxrl_dashboard, :projects)
+    original_runs = Application.fetch_env!(:jaxrl_dashboard, :runs)
 
-    Enum.each(dirs, fn {_, dir} -> File.mkdir_p!(dir) end)
+    projects =
+      for {id, opts} <- original_projects do
+        dir = Path.join(root, Atom.to_string(id))
 
-    original = Application.fetch_env!(:jaxrl_dashboard, :runs)
-    Application.put_env(:jaxrl_dashboard, :runs, Keyword.merge(original, dirs))
+        dirs = [
+          dir: dir,
+          config_dir: Path.join(dir, Path.basename(opts[:config_dir])),
+          results_dir: Path.join(dir, "results")
+        ]
+
+        Enum.each(dirs, fn {_, dir} -> File.mkdir_p!(dir) end)
+        {id, Keyword.merge(opts, dirs)}
+      end
+
+    data_dir = Path.join(root, "data")
+    File.mkdir_p!(data_dir)
+
+    Application.put_env(:jaxrl_dashboard, :projects, projects)
+    Application.put_env(:jaxrl_dashboard, :runs, Keyword.put(original_runs, :data_dir, data_dir))
 
     on_exit(fn ->
       Enum.each(JaxrlDashboard.Runs.Watcher.watched_names(), &JaxrlDashboard.Runs.Watcher.stop/1)
-      Application.put_env(:jaxrl_dashboard, :runs, original)
+      Application.put_env(:jaxrl_dashboard, :projects, original_projects)
+      Application.put_env(:jaxrl_dashboard, :runs, original_runs)
       File.rm_rf!(root)
     end)
 
-    %{run_dirs: Map.new(dirs)}
+    %{run_dirs: %{root: root, data_dir: data_dir}}
   end
 
   def put_run_setting(key, value) do
@@ -39,8 +54,23 @@ defmodule JaxrlDashboard.RunsFixtures do
     Application.put_env(:jaxrl_dashboard, :runs, Keyword.put(runs, key, value))
   end
 
-  def write_config(file_name, config \\ %{"seed" => 0}) do
-    File.write!(Path.join(Settings.config_dir(), file_name), Jason.encode!(config))
+  @doc "Changes one setting of a project, like its `train_command`."
+  def put_project_setting(project_id, key, value) do
+    projects = Application.fetch_env!(:jaxrl_dashboard, :projects)
+    id = String.to_existing_atom(project_id)
+    Application.put_env(:jaxrl_dashboard, :projects, put_in(projects, [id, key], value))
+  end
+
+  def project(id \\ "jaxrl"), do: Projects.get!(id)
+  def config_dir(project_id \\ "jaxrl"), do: project(project_id).config_dir
+  def results_dir(project_id \\ "jaxrl"), do: project(project_id).results_dir
+  def config_files(project_id \\ "jaxrl"), do: Project.config_files(project(project_id))
+
+  def experiment_dir(name, project_id \\ "jaxrl"),
+    do: Project.experiment_dir(project(project_id), name)
+
+  def write_config(file_name, config \\ %{"seed" => 0}, project_id \\ "jaxrl") do
+    File.write!(Path.join(config_dir(project_id), file_name), Jason.encode!(config))
     file_name
   end
 
@@ -49,7 +79,7 @@ defmodule JaxrlDashboard.RunsFixtures do
   recorded. Pass `checkpoint: false` to leave out the checkpoint.
   """
   def recordable_run_fixture(name, opts \\ []) do
-    dir = Settings.experiment_dir(name)
+    dir = experiment_dir(name)
     File.mkdir_p!(dir)
 
     if Keyword.get(opts, :checkpoint, true),

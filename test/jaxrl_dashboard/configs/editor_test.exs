@@ -4,7 +4,7 @@ defmodule JaxrlDashboard.Configs.EditorTest do
   alias JaxrlDashboard.Configs.{Editor, Schema}
 
   setup_all do
-    {:ok, raw} = JaxrlDashboard.FakeConfigValidator.schema()
+    {:ok, raw} = JaxrlDashboard.FakeConfigValidator.schema(JaxrlDashboard.Projects.get!("jaxrl"))
     %{schema: Schema.new(raw)}
   end
 
