@@ -10,15 +10,18 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.link navigate={~p"/"} class="text-sm text-base-content/60 hover:text-base-content">
+    <Layouts.app flash={@flash} current_scope={@current_scope} active={:runs}>
+      <.link
+        navigate={~p"/"}
+        class="-mb-2 inline-flex items-center gap-1 text-sm text-base-content/60 transition-colors hover:text-base-content"
+      >
         <.icon name="hero-arrow-left-micro" class="size-4" /> All runs
       </.link>
 
       <.header>
-        <span class="font-mono">{@run.name}</span>
+        <span class="font-mono text-lg break-words sm:text-xl">{@run.name}</span>
         <:subtitle>
-          <span class="inline-flex items-center gap-2">
+          <span class="mt-1 inline-flex flex-wrap items-center gap-2">
             <.project_badge id="run-project" project={@run.project} />
             <.status_badge run={@run} />
           </span>
@@ -27,14 +30,14 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
           <.link
             navigate={~p"/configs/new?#{[from: "run:" <> @run.name]}"}
             id="edit-config"
-            class="btn btn-ghost btn-sm"
+            class="btn btn-sm"
           >
             <.icon name="hero-pencil-square" class="size-4" /> Edit as new config
           </.link>
           <.link
             navigate={~p"/compare?#{[runs: @run.name]}"}
             id="compare-run"
-            class="btn btn-ghost btn-sm"
+            class="btn btn-sm"
           >
             <.icon name="hero-chart-bar-square" class="size-4" /> Compare
           </.link>
@@ -58,7 +61,7 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
         {@run.error}
       </div>
 
-      <dl class="grid grid-cols-2 gap-x-6 gap-y-3 rounded-box border border-base-300 p-4 text-sm sm:grid-cols-4">
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-4 rounded-box border border-base-300 bg-base-100 p-4 text-sm sm:grid-cols-4">
         <.detail label="Config">{@run.config_source || "—"}</.detail>
         <.detail label="Queued by">{(@run.user && @run.user.username) || "—"}</.detail>
         <.detail label="Queued"><.local_time id="run-queued" at={@run.inserted_at} /></.detail>
@@ -108,7 +111,7 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
           </.link>
         </div>
         <%!-- column-reverse keeps the view pinned to the newest output --%>
-        <div class="flex max-h-[28rem] flex-col-reverse overflow-auto rounded-box bg-neutral p-4 text-neutral-content">
+        <div class="flex max-h-[28rem] flex-col-reverse overflow-auto rounded-box border border-base-300 bg-neutral p-4 text-neutral-content">
           <div
             id="run-output"
             phx-update="stream"

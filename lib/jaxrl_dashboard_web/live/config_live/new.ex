@@ -19,7 +19,7 @@ defmodule JaxrlDashboardWeb.ConfigLive.New do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} active={:configs}>
       <.header>
         New config
         <:subtitle>
@@ -28,7 +28,7 @@ defmodule JaxrlDashboardWeb.ConfigLive.New do
             else: "Starting from #{@project.label}'s defaults."} Checked against {@project.label}'s config models as you edit.
         </:subtitle>
         <:actions>
-          <div class="flex flex-wrap items-center justify-end gap-2">
+          <div class="flex flex-wrap items-center gap-2 sm:justify-end">
             <nav
               id="project-switch"
               aria-label="Project"
@@ -53,7 +53,7 @@ defmodule JaxrlDashboardWeb.ConfigLive.New do
               </.link>
             </nav>
             <details id="start-from" class="dropdown dropdown-end">
-              <summary class="btn btn-ghost btn-sm">
+              <summary class="btn btn-sm">
                 <.icon name="hero-document-duplicate" class="size-4" /> Start from...
               </summary>
               <ul class="dropdown-content menu z-20 mt-1 max-h-96 w-64 flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">

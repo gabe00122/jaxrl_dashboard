@@ -31,42 +31,113 @@ defmodule JaxrlDashboardWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  attr :active, :atom,
+    default: nil,
+    values: [nil, :runs, :configs],
+    doc: "the nav section the page belongs to"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar border-b border-base-300 px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-1 items-center">
-        <.link navigate={~p"/"} class="flex w-fit items-center gap-2 font-semibold tracking-tight">
-          <.icon name="hero-cpu-chip" class="size-5 text-primary" /> rl dashboard
+    <header class="sticky top-0 z-30 border-b border-base-300 bg-base-100/85 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+      <div class="mx-auto flex h-14 max-w-6xl items-center gap-1 sm:gap-6">
+        <.link
+          navigate={~p"/"}
+          class="mr-2 flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight sm:mr-0"
+        >
+          <span class="grid size-7 place-items-center rounded-field bg-primary text-primary-content">
+            <.icon name="hero-cpu-chip-micro" class="size-4" />
+          </span>
+          <span class="hidden min-[360px]:inline">rl dashboard</span>
         </.link>
-        <nav :if={@current_scope} class="ml-6 flex items-center gap-1 text-sm">
-          <.link navigate={~p"/"} class="btn btn-ghost btn-sm">Runs</.link>
-          <.link navigate={~p"/configs/new"} class="btn btn-ghost btn-sm">New config</.link>
+
+        <nav :if={@current_scope} id="main-nav" class="flex items-center gap-0.5">
+          <.nav_link navigate={~p"/"} active={@active == :runs}>Runs</.nav_link>
+          <.nav_link navigate={~p"/configs/new"} active={@active == :configs}>
+            New config
+          </.nav_link>
         </nav>
-      </div>
-      <div class="flex-none">
-        <ul class="flex items-center gap-4 px-1">
-          <li :if={@current_scope} class="text-sm text-base-content/70">
-            <.icon name="hero-user-circle" class="size-4 align-[-3px]" /> {@current_scope.user.username}
-          </li>
-          <li>
+
+        <div class="ml-auto flex items-center">
+          <%= if @current_scope do %>
+            <.account_menu user={@current_scope.user} />
+          <% else %>
             <.theme_toggle />
-          </li>
-          <li :if={@current_scope}>
-            <.link href={~p"/log-out"} method="delete" class="btn btn-ghost btn-sm">Log out</.link>
-          </li>
-        </ul>
+          <% end %>
+        </div>
       </div>
     </header>
 
-    <main class="px-4 py-10 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-6xl space-y-4">
+    <main class="px-4 pt-6 pb-20 sm:px-6 sm:pt-10 lg:px-8">
+      <div class="mx-auto max-w-6xl space-y-5">
         {render_slot(@inner_block)}
       </div>
     </main>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :active, :boolean, default: false
+  slot :inner_block, required: true
+
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      aria-current={@active && "page"}
+      class={[
+        "rounded-field px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors duration-150",
+        if(@active,
+          do: "bg-base-200 font-medium text-base-content",
+          else: "text-base-content/60 hover:bg-base-200/60 hover:text-base-content"
+        )
+      ]}
+    >
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  attr :user, :map, required: true
+
+  # Who's signed in, the theme and logging out, behind the user's initial.
+  defp account_menu(assigns) do
+    ~H"""
+    <details
+      id="account-menu"
+      class="dropdown dropdown-end"
+      phx-click-away={JS.remove_attribute("open", to: "#account-menu")}
+    >
+      <summary
+        class="grid size-8 cursor-pointer list-none place-items-center rounded-full border border-base-300 bg-base-200 text-xs font-semibold uppercase transition-colors hover:border-base-content/30 [&::-webkit-details-marker]:hidden"
+        aria-label="Account menu"
+      >
+        {String.first(@user.username)}
+      </summary>
+      <div class="dropdown-content z-40 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+        <div class="px-2.5 pt-1.5 pb-2">
+          <p class="text-xs text-base-content/60">Signed in as</p>
+          <p class="truncate text-sm font-medium">{@user.username}</p>
+        </div>
+        <div class="my-1 h-px bg-base-300" />
+        <div class="flex items-center justify-between gap-4 px-2.5 py-1.5 text-sm">
+          <span class="text-base-content/80">Theme</span>
+          <.theme_toggle />
+        </div>
+        <div class="my-1 h-px bg-base-300" />
+        <.link
+          href={~p"/log-out"}
+          method="delete"
+          id="log-out"
+          class="flex items-center gap-2 rounded-field px-2.5 py-2 text-sm text-base-content/80 transition-colors hover:bg-base-200 hover:text-base-content"
+        >
+          <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> Log out
+        </.link>
+      </div>
+    </details>
     """
   end
 
@@ -126,31 +197,24 @@ defmodule JaxrlDashboardWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
-
+    <div class="relative flex w-24 shrink-0 items-center rounded-full border border-base-300 bg-base-200">
+      <div class="absolute inset-y-0 left-0 w-1/3 rounded-full bg-base-100 shadow-sm ring-1 ring-base-300 transition-[left] duration-200 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0" />
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        :for={
+          {theme, icon} <- [
+            system: "hero-computer-desktop-micro",
+            light: "hero-sun-micro",
+            dark: "hero-moon-micro"
+          ]
+        }
+        type="button"
+        class="relative flex w-1/3 cursor-pointer justify-center py-1.5 text-base-content/60 transition-colors hover:text-base-content"
         phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
+        data-phx-theme={theme}
+        aria-label={"#{theme} theme"}
+        title={"#{String.capitalize(to_string(theme))} theme"}
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-      >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-      >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name={icon} class="size-3.5" />
       </button>
     </div>
     """

@@ -11,14 +11,14 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} active={:runs}>
       <.header>
         Training runs
         <:subtitle>Every project shares the GPU: runs start one at a time, oldest first.</:subtitle>
         <:actions>
           <.link
             navigate={~p"/configs/new?#{[project: @form[:project].value]}"}
-            class="btn btn-ghost btn-sm"
+            class="btn btn-sm"
           >
             <.icon name="hero-adjustments-horizontal" class="size-4" /> Build a config
           </.link>
@@ -30,7 +30,7 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
         id="enqueue-form"
         phx-change="validate"
         phx-submit="enqueue"
-        class="grid gap-x-4 rounded-box border border-base-300 bg-base-200/40 p-4 sm:grid-cols-[9rem_1fr_1fr_auto] sm:items-start"
+        class="grid gap-x-4 rounded-box border border-base-300 bg-base-200/50 p-4 sm:grid-cols-[9rem_1fr_1fr_auto] sm:items-start"
       >
         <.input
           field={@form[:project]}
@@ -53,7 +53,7 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
 
       <nav
         id="project-filter"
-        class="flex flex-wrap items-center gap-1"
+        class="-mx-4 flex items-center gap-1 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0"
         aria-label="Filter by project"
       >
         <.link
@@ -62,7 +62,7 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
           id={"filter-#{id || "all"}"}
           aria-current={@filter == id && "page"}
           class={[
-            "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors",
+            "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors",
             if(@filter == id,
               do: "bg-base-content text-base-100",
               else: "text-base-content/70 hover:bg-base-200 hover:text-base-content"
@@ -79,29 +79,12 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
         </.link>
       </nav>
 
-      <div
-        :if={@selected != []}
-        id="compare-bar"
-        class="flex flex-wrap items-center gap-3 rounded-box border border-base-300 bg-base-100 px-4 py-2 text-sm"
-      >
-        <span>{length(@selected)} selected</span>
-        <.link
-          navigate={~p"/compare?#{[runs: Enum.join(@selected, ",")]}"}
-          class="btn btn-primary btn-sm"
-        >
-          <.icon name="hero-chart-bar-square" class="size-4" /> Compare
-        </.link>
-        <button type="button" phx-click="clear_selection" class="btn btn-ghost btn-sm">
-          Clear
-        </button>
-      </div>
-
       <.table
         id="runs"
         rows={@streams.runs}
         row_click={fn {_id, run} -> JS.navigate(~p"/runs/#{run.name}") end}
       >
-        <:col :let={{_id, run}} label="">
+        <:col :let={{_id, run}} label="" class="max-md:align-top">
           <%!-- Its own phx-click, so ticking a box doesn't open the run. --%>
           <input
             type="checkbox"
@@ -112,21 +95,33 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
             aria-label={"Select #{run.name} to compare"}
           />
         </:col>
-        <:col :let={{_id, run}} label="Name">
-          <span class="font-mono text-sm">{run.name}</span>
+        <:col :let={{_id, run}} label="Name" class="max-md:w-full">
+          <span class="font-mono text-sm break-words">{run.name}</span>
+          <%!-- Below md the badge columns are hidden, so they show here. --%>
+          <span class="mt-1.5 flex flex-wrap items-center gap-1.5 md:hidden">
+            <.status_badge run={run} />
+            <.project_badge project={run.project} />
+            <span class="text-xs text-base-content/60">
+              <.local_time id={"run-#{run.id}-queued-compact"} at={run.inserted_at} />
+            </span>
+          </span>
         </:col>
-        <:col :let={{_id, run}} label="Project"><.project_badge project={run.project} /></:col>
-        <:col :let={{_id, run}} label="Status"><.status_badge run={run} /></:col>
-        <:col :let={{_id, run}} label="Config">
+        <:col :let={{_id, run}} label="Project" class="max-md:hidden">
+          <.project_badge project={run.project} />
+        </:col>
+        <:col :let={{_id, run}} label="Status" class="max-md:hidden">
+          <.status_badge run={run} />
+        </:col>
+        <:col :let={{_id, run}} label="Config" class="max-lg:hidden">
           <span class="text-sm text-base-content/70">{run.config_source}</span>
         </:col>
-        <:col :let={{_id, run}} label="Queued">
+        <:col :let={{_id, run}} label="Queued" class="whitespace-nowrap max-md:hidden">
           <.local_time id={"run-#{run.id}-queued"} at={run.inserted_at} />
         </:col>
-        <:col :let={{_id, run}} label="Duration">
+        <:col :let={{_id, run}} label="Duration" class="whitespace-nowrap max-md:align-top">
           <.duration id={"run-#{run.id}-duration"} run={run} />
         </:col>
-        <:col :let={{_id, run}} label="By">
+        <:col :let={{_id, run}} label="By" class="max-lg:hidden">
           <span class="text-sm">{run.user && run.user.username}</span>
         </:col>
         <:action :let={{_id, run}}>
@@ -140,6 +135,24 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
           </.link>
         </:action>
       </.table>
+
+      <%!-- Sticks to the bottom of the screen while picking runs further down. --%>
+      <div
+        :if={@selected != []}
+        id="compare-bar"
+        class="sticky bottom-4 z-20 mx-auto flex w-fit items-center gap-1 rounded-full border border-base-300 bg-base-100/90 py-1 pr-1 pl-4 text-sm shadow-lg backdrop-blur-md"
+      >
+        <span class="mr-2 tabular-nums">{length(@selected)} selected</span>
+        <button type="button" phx-click="clear_selection" class="btn btn-ghost btn-sm rounded-full">
+          Clear
+        </button>
+        <.link
+          navigate={~p"/compare?#{[runs: Enum.join(@selected, ",")]}"}
+          class="btn btn-primary btn-sm rounded-full"
+        >
+          <.icon name="hero-chart-bar-square-micro" class="size-4" /> Compare
+        </.link>
+      </div>
 
       <p :if={@empty?} id="runs-empty" class="py-10 text-center text-base-content/60">
         {if @filter, do: "No #{project_label(@filter)} runs yet.", else: "No runs yet."} Pick a config above to queue one.

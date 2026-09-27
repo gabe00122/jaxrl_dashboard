@@ -21,8 +21,11 @@ defmodule JaxrlDashboardWeb.CompareLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.link navigate={~p"/"} class="text-sm text-base-content/60 hover:text-base-content">
+    <Layouts.app flash={@flash} current_scope={@current_scope} active={:runs}>
+      <.link
+        navigate={~p"/"}
+        class="-mb-2 inline-flex items-center gap-1 text-sm text-base-content/60 transition-colors hover:text-base-content"
+      >
         <.icon name="hero-arrow-left-micro" class="size-4" /> All runs
       </.link>
 
@@ -36,22 +39,24 @@ defmodule JaxrlDashboardWeb.CompareLive do
         <div
           :for={run <- @runs}
           id={"compare-run-#{run.name}"}
-          class="inline-flex items-center gap-2 rounded-full border border-base-300 bg-base-100 py-1 pr-1 pl-3 text-sm"
+          class="inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border border-base-300 bg-base-100 py-1 pr-1 pl-3 text-sm"
         >
           <span
-            class="inline-block h-0.5 w-4 rounded-full"
+            class="inline-block h-0.5 w-4 shrink-0 rounded-full"
             style={"background: var(--series-#{@slots[run.name] + 1})"}
           />
-          <.link navigate={~p"/runs/#{run.name}"} class="font-mono hover:underline">
+          <.link navigate={~p"/runs/#{run.name}"} class="min-w-0 truncate font-mono hover:underline">
             {run.name}
           </.link>
-          <.project_badge project={run.project} />
+          <span class="contents max-sm:hidden">
+            <.project_badge project={run.project} />
+          </span>
           <.status_badge run={run} />
           <button
             type="button"
             phx-click="remove"
             phx-value-name={run.name}
-            class="btn btn-ghost btn-xs btn-circle"
+            class="btn btn-ghost btn-xs btn-circle shrink-0"
             aria-label={"Remove #{run.name}"}
           >
             <.icon name="hero-x-mark-micro" class="size-4" />
@@ -63,7 +68,7 @@ defmodule JaxrlDashboardWeb.CompareLive do
           for={%{}}
           id="add-run-form"
           phx-submit="add"
-          class="flex items-center gap-2 [&_.fieldset]:mb-0 [&_.fieldset]:py-0 [&_label]:block"
+          class="flex w-full items-center gap-2 sm:w-auto [&_.fieldset]:mb-0 [&_.fieldset]:flex-1 [&_.fieldset]:py-0 [&_label]:block"
         >
           <.input
             type="text"

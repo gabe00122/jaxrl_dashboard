@@ -63,23 +63,30 @@ defmodule JaxrlDashboardWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="toast toast-top toast-end z-50 max-sm:toast-center"
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+      <div class="flex w-[calc(100vw-2rem)] max-w-96 items-start gap-3 rounded-box border border-base-300 bg-base-100 p-3.5 text-sm text-wrap shadow-lg">
+        <.icon
+          :if={@kind == :info}
+          name="hero-information-circle-mini"
+          class="mt-px size-5 shrink-0 text-info"
+        />
+        <.icon
+          :if={@kind == :error}
+          name="hero-exclamation-circle-mini"
+          class="mt-px size-5 shrink-0 text-error"
+        />
+        <div class="min-w-0 flex-1">
+          <p :if={@title} class="font-medium">{@title}</p>
+          <p class={@title && "text-base-content/70"}>{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="group -m-1 cursor-pointer rounded-field p-1 transition-colors hover:bg-base-200"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark-micro" class="size-4 opacity-50 group-hover:opacity-80" />
         </button>
       </div>
     </div>
@@ -321,16 +328,18 @@ defmodule JaxrlDashboardWeb.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
-      <div>
-        <h1 class="text-lg font-semibold leading-8">
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <div class="min-w-0">
+        <h1 class="text-xl font-semibold tracking-tight break-words sm:text-2xl">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="mt-1 text-sm text-base-content/60">
           {render_slot(@subtitle)}
         </p>
       </div>
-      <div class="flex-none">{render_slot(@actions)}</div>
+      <div :if={@actions != []} class="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+        {render_slot(@actions)}
+      </div>
     </header>
     """
   end
@@ -356,6 +365,7 @@ defmodule JaxrlDashboardWeb.CoreComponents do
 
   slot :col, required: true do
     attr :label, :string
+    attr :class, :any, doc: "classes for the column's cells, e.g. to hide it on small screens"
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -367,34 +377,45 @@ defmodule JaxrlDashboardWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
-            <span class="sr-only">{gettext("Actions")}</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td
-            :for={col <- @col}
-            phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
+    <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+      <table class="table max-sm:table-sm">
+        <thead class="bg-base-200/60">
+          <tr class="border-base-300">
+            <th
+              :for={col <- @col}
+              class={["text-xs font-medium whitespace-nowrap text-base-content/60", col[:class]]}
+            >
+              {col[:label]}
+            </th>
+            <th :if={@action != []} class="w-0">
+              <span class="sr-only">{gettext("Actions")}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
+          <tr
+            :for={row <- @rows}
+            id={@row_id && @row_id.(row)}
+            class="border-base-300 transition-colors last:border-0 hover:bg-base-200/50"
           >
-            {render_slot(col, @row_item.(row))}
-          </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
-              <%= for action <- @action do %>
-                {render_slot(action, @row_item.(row))}
-              <% end %>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td
+              :for={col <- @col}
+              phx-click={@row_click && @row_click.(row)}
+              class={[@row_click && "hover:cursor-pointer", col[:class]]}
+            >
+              {render_slot(col, @row_item.(row))}
+            </td>
+            <td :if={@action != []} class="w-0">
+              <div class="flex gap-4">
+                <%= for action <- @action do %>
+                  {render_slot(action, @row_item.(row))}
+                <% end %>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 

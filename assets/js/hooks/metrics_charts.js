@@ -364,9 +364,9 @@ export default {
   },
 
   buildControls() {
-    const row = el("div", "mb-4 flex flex-wrap items-center gap-x-6 gap-y-2")
+    const row = el("div", "mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 sm:gap-x-6")
 
-    const filter = el("input", "input input-sm w-56")
+    const filter = el("input", "input input-sm w-full sm:w-56")
     filter.type = "search"
     filter.placeholder = "Filter metrics"
     filter.value = this.filter
@@ -407,7 +407,7 @@ export default {
 
     row.append(filter, views)
     if (this.view === "charts") {
-      row.append(smoothingLabel, el("span", "text-xs text-base-content/50", "Drag to zoom · double-click to reset"))
+      row.append(smoothingLabel, el("span", "hidden text-xs text-base-content/50 [@media(hover:hover)]:inline", "Drag to zoom · double-click to reset"))
     }
     return row
   },

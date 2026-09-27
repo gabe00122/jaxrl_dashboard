@@ -7,9 +7,10 @@ defmodule JaxrlDashboardWeb.RunComponents do
   alias JaxrlDashboard.Projects
   alias JaxrlDashboard.Runs.Run
 
-  # Dot colors that stay distinct from each other in both themes. Text stays
+  # Dot colors that stay distinct from each other, and from the status
+  # badges beside them, in both themes. Text stays
   # in the base color so the label reads the same everywhere.
-  @project_dots ["bg-primary", "bg-info", "bg-success"]
+  @project_dots ["bg-base-content/70", "bg-accent", "bg-info"]
 
   @doc """
   The project a run belongs to, as a small tag. Each project gets its own
@@ -50,7 +51,7 @@ defmodule JaxrlDashboardWeb.RunComponents do
   def status_badge(assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
       status_class(@run)
     ]}>
       <span
@@ -66,16 +67,16 @@ defmodule JaxrlDashboardWeb.RunComponents do
   defp status_label(%Run{status: status}), do: Atom.to_string(status)
 
   defp status_class(%Run{status: :running, cancel_requested_at: %DateTime{}}),
-    do: "bg-warning/15 text-warning"
+    do: "bg-warning/10 text-warning"
 
   defp status_class(%Run{status: status}) do
     case status do
-      :queued -> "bg-base-300 text-base-content/70"
-      :running -> "bg-info/15 text-info"
-      :succeeded -> "bg-success/15 text-success"
-      :failed -> "bg-error/15 text-error"
-      :lost -> "bg-error/15 text-error"
-      :cancelled -> "bg-base-300 text-base-content/50 line-through"
+      :queued -> "bg-base-200 text-base-content/70 ring-1 ring-inset ring-base-300"
+      :running -> "bg-info/10 text-info"
+      :succeeded -> "bg-success/10 text-success"
+      :failed -> "bg-error/10 text-error"
+      :lost -> "bg-error/10 text-error"
+      :cancelled -> "bg-base-200 text-base-content/50 line-through"
       :imported -> "border border-base-300 text-base-content/60"
     end
   end
