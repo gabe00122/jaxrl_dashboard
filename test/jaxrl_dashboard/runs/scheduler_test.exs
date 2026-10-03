@@ -79,6 +79,26 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
     assert pgrep == ""
   end
 
+  test "a cancelled run counts as running until its trainer has exited", %{scope: scope} do
+    # Like a trainer saving a checkpoint on SIGTERM before exiting.
+    put_project_setting("jaxrl", :train_command, [
+      "bash",
+      "-c",
+      "trap 'sleep 0.5; exit 143' TERM; sleep 60 & wait",
+      "--"
+    ])
+
+    run = enqueue(scope, %{})
+    start_supervised!(Scheduler)
+    run = wait_until(fn -> (run = reload(run)).pid && run end)
+
+    {:ok, _} = Runs.cancel_run(run)
+
+    # The wrapper outlived the SIGTERM and recorded how the trainer exited.
+    run = wait_for_status(run, :cancelled)
+    assert run.exit_code == 143
+  end
+
   test "escalates to SIGKILL when a job ignores SIGTERM", %{scope: scope} do
     put_project_setting("jaxrl", :train_command, [
       "bash",
@@ -96,6 +116,8 @@ defmodule JaxrlDashboard.Runs.SchedulerTest do
     # kill_grace_period is 2s in tests.
     run = wait_for_status(run, :cancelled, 6_000)
     refute Launcher.alive?(run)
+    {pgrep, _} = System.cmd("pgrep", ["-g", "#{run.pid}"])
+    assert pgrep == ""
   end
 
   test "jobs keep running across a scheduler restart", %{scope: scope} do

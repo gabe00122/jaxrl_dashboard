@@ -14,6 +14,13 @@
 # (cancelled, OOM killer, reboot...).
 set -u
 
+# Cancelling sends SIGTERM to the whole process group, this script included.
+# Without a handler bash would exit at once, leaving COMMAND still shutting
+# down while the dashboard thinks the run is gone (and starts the next one).
+# A no-op handler makes bash wait for COMMAND; unlike `trap '' TERM`, it isn't
+# inherited, so COMMAND still gets the signal.
+trap : TERM
+
 # Let go of the dashboard's stdio right away, otherwise the dashboard's
 # System.cmd call would block until the run finishes.
 exec </dev/null >/dev/null 2>&1
