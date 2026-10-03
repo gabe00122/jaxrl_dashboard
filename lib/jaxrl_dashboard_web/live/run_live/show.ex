@@ -86,12 +86,6 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
             <h2 class="text-sm font-semibold">Metrics</h2>
             <.stage_tabs :if={length(@stages) > 1} stages={@stages} stage={@stage} logged={@logged} />
           </div>
-          <.link
-            href={~p"/runs/#{@run.name}/files/logs.jsonl?#{stage_query(@stages, @stage)}"}
-            class="text-xs text-base-content/60 hover:text-base-content"
-          >
-            <.icon name="hero-arrow-down-tray-micro" class="size-3.5" /> logs.jsonl
-          </.link>
         </div>
         <%!-- Rendered client-side by assets/js/hooks/metrics_charts.js --%>
         <div id="metrics" phx-hook="MetricsCharts" phx-update="ignore" data-mode="single"></div>
@@ -181,10 +175,6 @@ defmodule JaxrlDashboardWeb.RunLive.Show do
     </div>
     """
   end
-
-  # Single-stage runs keep the plain URL.
-  defp stage_query([_only], _stage), do: []
-  defp stage_query(_stages, stage), do: [stage: stage.id]
 
   attr :run, Run, required: true
   attr :videos, :map, required: true

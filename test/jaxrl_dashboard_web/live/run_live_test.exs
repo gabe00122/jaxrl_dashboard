@@ -353,11 +353,6 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       assert has_element?(view, ~s(#stage-value[aria-selected="true"]))
       assert has_element?(view, "#stage-rl")
 
-      assert has_element?(
-               view,
-               ~s(a[href="/runs/piped/files/logs.jsonl?stage=value"])
-             )
-
       view |> element("#metrics") |> render_hook("load_metrics", %{})
       assert_reply(view, %{runs: [%{steps: [0], series: %{"value_loss.mean" => [2.0]}}]})
 
@@ -375,30 +370,6 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       assert has_element?(view, ~s(#stage-value[aria-selected="true"]))
       Runs.broadcast_run(run.name, {:metrics, run.name, "rl", [row(1)]})
       assert has_element?(view, ~s(#stage-value[aria-selected="true"]))
-    end
-
-    test "a stage's logs.jsonl can be downloaded", %{conn: conn, scope: scope} do
-      {:ok, _} =
-        Runs.enqueue_run(scope, %{
-          "project" => "llm_rl",
-          "config_source" => "ppo.json",
-          "name" => "dl2"
-        })
-
-      for {dir, row} <- [{"dl2-value", "value"}, {"dl2", "rl"}] do
-        File.mkdir_p!(experiment_dir(dir, "llm_rl"))
-        File.write!(Path.join(experiment_dir(dir, "llm_rl"), "logs.jsonl"), row)
-      end
-
-      assert conn |> get(~p"/runs/dl2/files/logs.jsonl?#{[stage: "value"]}") |> response(200) ==
-               "value"
-
-      # The main stage by default.
-      conn1 = get(conn, ~p"/runs/dl2/files/logs.jsonl")
-      assert response(conn1, 200) == "rl"
-      assert get_resp_header(conn1, "content-disposition") |> hd() =~ "dl2-logs.jsonl"
-
-      assert conn |> get(~p"/runs/dl2/files/logs.jsonl?#{[stage: "nope"]}") |> response(404)
     end
   end
 
@@ -420,15 +391,9 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
       %{run: run}
     end
 
-    test "serves a run's logs.jsonl and output.log", %{conn: conn, run: run} do
-      File.mkdir_p!(experiment_dir(run.name))
-      File.write!(JaxrlDashboard.Metrics.path(experiment_dir(run.name)), ~s({"step": 0}\n))
+    test "serves a run's output.log", %{conn: conn, run: run} do
       File.mkdir_p!(Settings.job_dir(run.name))
       File.write!(Settings.output_path(run.name), "hello\n")
-
-      conn1 = get(conn, ~p"/runs/dl/files/logs.jsonl")
-      assert response(conn1, 200) == ~s({"step": 0}\n)
-      assert get_resp_header(conn1, "content-disposition") |> hd() =~ "dl-logs.jsonl"
 
       assert conn |> get(~p"/runs/dl/files/output.log") |> response(200) == "hello\n"
     end
@@ -439,12 +404,12 @@ defmodule JaxrlDashboardWeb.RunLiveTest do
     end
 
     test "404s for missing files and unknown runs", %{conn: conn} do
-      assert conn |> get(~p"/runs/dl/files/logs.jsonl") |> response(404)
-      assert_error_sent 404, fn -> get(conn, ~p"/runs/nope/files/logs.jsonl") end
+      assert conn |> get(~p"/runs/dl/files/output.log") |> response(404)
+      assert_error_sent 404, fn -> get(conn, ~p"/runs/nope/files/output.log") end
     end
   end
 
   test "file downloads require login", %{conn: conn} do
-    assert conn |> get(~p"/runs/dl/files/logs.jsonl") |> redirected_to() == ~p"/log-in"
+    assert conn |> get(~p"/runs/dl/files/output.log") |> redirected_to() == ~p"/log-in"
   end
 end

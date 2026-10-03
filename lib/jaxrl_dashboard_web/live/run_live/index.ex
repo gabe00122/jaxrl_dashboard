@@ -15,14 +15,6 @@ defmodule JaxrlDashboardWeb.RunLive.Index do
       <.header>
         Training runs
         <:subtitle>Every project shares the GPU: runs start one at a time, oldest first.</:subtitle>
-        <:actions>
-          <.link
-            navigate={~p"/configs/new?#{[project: @form[:project].value]}"}
-            class="btn btn-sm"
-          >
-            <.icon name="hero-adjustments-horizontal" class="size-4" /> Build a config
-          </.link>
-        </:actions>
       </.header>
 
       <.form
